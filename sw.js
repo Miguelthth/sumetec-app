@@ -1,4 +1,4 @@
-const CACHE = 'sumetec-rem-v1';
+const CACHE = 'sumetec-rem-v3';
 const STATIC = [
   './remision.html',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
