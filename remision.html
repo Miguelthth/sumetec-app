@@ -310,7 +310,6 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     SUMETEC <span class="ac">Remisiones</span>
   </div>
   <button class="btn btn-g" onclick="nuevaRem()">＋ Nueva</button>
-  <button class="btn btn-g" onclick="guardarYRegistrar()">💾 Guardar</button>
   <div class="tb-div"></div>
   <button class="btn btn-o" onclick="verHist()">📋 Historial</button>
   <button class="btn btn-o" onclick="verCobros()" style="color:#ff8c69;border-color:rgba(255,140,105,.35)" id="btnCobros">💰 Cobros</button>
@@ -318,7 +317,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   <button class="btn btn-o" onclick="abrirEmpresa()">🏢 Mi empresa</button>
   <div class="tb-div"></div>
   <button class="btn btn-g" onclick="window.print()">🖨️ Imprimir</button>
-  <button class="btn btn-p" onclick="descargarPDF()">⬇️ Descargar PDF</button>
+  <button class="btn btn-p" id="btnDescargarPDF" onclick="descargarPDFSiRegistrado()" style="opacity:.45;cursor:not-allowed" disabled>🔒 PDF</button>
   <span id="badgePendientes"></span>
 </div>
 <div id="netBar"><div id="netBarMsg">📵 Sin conexión — todo se guarda y se enviará al volver la señal</div></div>
@@ -353,6 +352,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       </div>
       <div class="doc-meta">
         <div class="doc-meta-i"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span id="fechaDisp">—</span></div>
+        <div class="doc-meta-i"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span id="horaDisp">—</span></div>
       </div>
     </div>
   </div>
@@ -425,6 +425,37 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <button id="btnPagoRapido" class="btn btn-p no-print" style="width:100%;justify-content:center;padding:11px;margin-top:12px;display:none" onclick="irAPagos()">💰 Registrar Pago</button>
     </div>
   </div>
+  <!-- Firma del cliente — aparece entre los totales y el pie -->
+  <div id="firmaSection" style="padding:10px 32px 14px;border-top:1px solid var(--border);display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap">
+    <div style="flex:1;min-width:180px">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin-bottom:6px">Firma del cliente</div>
+      <div id="firmaPreview" style="border:1.5px dashed var(--border);border-radius:8px;height:64px;display:flex;align-items:center;justify-content:center;background:var(--bg);overflow:hidden;cursor:pointer" onclick="abrirFirma()">
+        <span id="firmaPlaceholder" style="font-size:12px;color:var(--muted)">✍️ Toca aquí para firmar</span>
+        <img id="firmaImg" style="display:none;max-height:62px;max-width:100%;object-fit:contain" alt="Firma">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:6px" id="firmaBtns">
+        <button class="btn no-print" style="font-size:11px;padding:4px 10px;background:var(--green-light);color:var(--green);border:none;border-radius:6px" onclick="abrirFirma()">✍️ Firmar</button>
+        <button class="btn no-print" id="btnBorrarFirma" style="font-size:11px;padding:4px 10px;background:#fff0f0;color:#c0392b;border:none;border-radius:6px;display:none" onclick="borrarFirma()">🗑️ Borrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal pad de firma -->
+  <div class="ov" id="ovFirma" style="z-index:900">
+    <div style="background:#fff;border-radius:16px;padding:20px;max-width:560px;width:calc(100% - 32px);display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-weight:700;font-size:15px;color:var(--navy)">✍️ Firma del cliente</div>
+        <button style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)" onclick="closeOv('ovFirma')">✕</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted)">Firma con el dedo sobre el recuadro blanco</div>
+      <canvas id="firmaCanvas" style="border:2px solid var(--navy);border-radius:10px;width:100%;touch-action:none;background:#fff;cursor:crosshair" height="220"></canvas>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-g" style="flex:1;justify-content:center;padding:12px;font-size:14px" onclick="limpiarFirmaCanvas()">🗑️ Limpiar</button>
+        <button class="btn btn-p" style="flex:1;justify-content:center;padding:12px;font-size:14px;font-weight:700" onclick="confirmarFirma()">✅ Confirmar firma</button>
+      </div>
+    </div>
+  </div>
+
   <div class="doc-ft">
     <div class="ft-box">
       <img id="ftLogoImg" src="" alt="" style="height:28px;width:auto;display:none">
@@ -467,10 +498,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         <button class="btn btn-g" style="justify-content:center;padding:10px;font-size:13px;font-weight:600" onclick="setAtajoMonto(0.75)">75%</button>
         <button class="btn btn-p" style="justify-content:center;padding:10px;font-size:13px;font-weight:600" onclick="setAtajoMonto(1)">Total</button>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <button class="btn btn-p" style="justify-content:center;padding:14px;font-size:14px;font-weight:700;border-radius:10px" onclick="registrarPagoConGuardar('abono')">💛 Registrar abono</button>
-        <button class="btn" style="justify-content:center;padding:14px;font-size:14px;font-weight:700;border-radius:10px;background:#1C6E4A;color:#fff" onclick="registrarPagoConGuardar('completo')">✅ Pago completo</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <button class="btn btn-g" style="justify-content:center;padding:12px;font-size:13px;font-weight:600;border-radius:10px" onclick="prepararPago('abono')">💛 Abono</button>
+        <button class="btn btn-g" style="justify-content:center;padding:12px;font-size:13px;font-weight:600;border-radius:10px" onclick="prepararPago('completo')">✅ Pago completo</button>
       </div>
+      <button class="btn btn-p" id="btnRegistrar" style="width:100%;justify-content:center;padding:16px;font-size:16px;font-weight:800;border-radius:12px;letter-spacing:.3px" onclick="registrarTodo()">✅ REGISTRAR</button>
     </div>
   </div>
 </div>
@@ -730,7 +762,7 @@ function actualizarPanelConexion(){
       +'<div style="font-weight:400;opacity:.8;font-size:10.5px;margin-top:2px">Última sincronización: '+fr+'</div>';
   } else if(pend>0){
     bar.classList.add('show');bar.classList.add('warn');
-    msg.innerHTML='🔄 Enviando '+pend+' pendiente(s)… se sincroniza solo.';
+    msg.innerHTML='🔄 <b>Enviando '+pend+' pendiente(s)…</b> Los datos se guardarán aunque cierres la app.';
   } else {
     bar.classList.remove('show');bar.classList.remove('warn');
   }
@@ -862,7 +894,11 @@ document.addEventListener('DOMContentLoaded',()=>{
   actualizarPanelConexion();
 });
 
-function setFecha(){document.getElementById('fechaDisp').textContent=new Date().toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'})}
+function setFecha(){
+  const now=new Date();
+  document.getElementById('fechaDisp').textContent=now.toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'});
+  document.getElementById('horaDisp').textContent=now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+}
 function syncFolio(v){const fc=document.getElementById('folioCard');if(fc)fc.textContent=v||'—';syncPrintHeader();autosave()}
 
 function genFolio(){
@@ -997,21 +1033,23 @@ function _encolarPDFsiHace(rem){
 }
 async function procesarColaPDF(){
   if(!isOnline)return;
-  if(!window.jspdf)return; // jsPDF no disponible aún (sin caché), reintentar luego
+  // Si jsPDF aún no cargó, reintentar en 3s (pasa cuando se abre con caché vacío)
+  if(!window.jspdf){
+    setTimeout(procesarColaPDF, 3000);
+    return;
+  }
   const cola=leerSeguro('cola_pdf',[]);
   if(!cola.length)return;
   let ok=0;
   for(const entry of [...cola]){
-    // Buscar la remisión local para regenerar el PDF con sus datos
     const rem=remisiones.find(x=>String(x.id)===String(entry.id));
-    if(!rem||!rem.data)continue; // sin datos locales no podemos regenerar
+    if(!rem||!rem.data){ console.warn('PDF en cola sin datos locales:',entry.folio); continue; }
     try{
-      // descargarPDF(rem) regenera el PDF y lo sube a Drive (modo regen: no descarga)
       descargarPDF(rem);
       ok++;
-    }catch(e){}
+    }catch(e){ console.error('procesarColaPDF',e); }
   }
-  if(ok>0)toast('Subiendo PDF(s) a Drive…','ok');
+  if(ok>0)toast('⬆️ Subiendo '+ok+' PDF(s) a Drive…','ok',4000);
   actualizarBadgePendientes();
 }
 
@@ -1124,7 +1162,8 @@ function snap(){
     c_tel:document.getElementById('c_tel').value,
     d_asesor:document.getElementById('d_asesor').value,d_pago:document.getElementById('d_pago').value,
     obs:document.getElementById('obs').value,
-    descPct:document.getElementById('descPct').value,items};
+    descPct:document.getElementById('descPct').value,items,
+    _firma:_firmaData||null};
 }
 function restore(data){
   if(!data)return;
@@ -1133,6 +1172,13 @@ function restore(data){
   ['c_nombre','c_dir','c_cp','c_tel','d_asesor','obs'].forEach(f=>s(f,data[f]));
   s('d_pago',data.d_pago);s('descPct',data.descPct??0);
   items=(data.items||[]).map(it=>({...it,_id:_id++}));
+  // Restaurar firma si había una guardada
+  _firmaData=data._firma||null;
+  const img=document.getElementById('firmaImg');
+  const ph=document.getElementById('firmaPlaceholder');
+  const btn=document.getElementById('btnBorrarFirma');
+  if(_firmaData&&img){img.src=_firmaData;img.style.display='block';if(ph)ph.style.display='none';if(btn)btn.style.display='';}
+  else{if(img){img.src='';img.style.display='none';}if(ph)ph.style.display='';if(btn)btn.style.display='none';}
 }
 function guardar(){guardarSeguro('r_draft',JSON.stringify(snap()));}
 function guardarYRegistrar(){
@@ -1155,26 +1201,27 @@ function loadDraft(){
   }catch(e){}
 }
 
-async function registrarRemision(){
+async function registrarRemision(gpsParam){
   const sn=snap();
   const activos=sn.items.filter(i=>(+i.qty>0)&&(+i.precio>0));
   if(!activos.length){toast('Agrega al menos un producto con cantidad y precio','err');return;}
   let sub=0,iva=0;
   activos.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;const i=q*p;sub+=i;iva+=i*(v/100);});
   const tot=Math.round((sub+iva-sub*((+sn.descPct||0)/100))*100)/100;
+  // Guardar GPS en el snap si viene del botón REGISTRAR
+  if(gpsParam){sn._lat=gpsParam.lat;sn._lng=gpsParam.lng;}
 
   // ── Actualizar remisión existente ──
   const existingIdx=remisiones.findIndex(r=>r.id===remActualId);
   if(existingIdx>=0){
     const ex=remisiones[existingIdx];
-    ex.data={...sn,folio:ex.folio};ex.total=tot;ex.cliente=sn.c_nombre||'Sin nombre';
+    ex.data={...sn,folio:ex.folio};ex.total=tot;ex.saldo=tot;ex.cliente=sn.c_nombre||'Sin nombre';
     ex.sincronizado=false;
     remActualId=ex.id;
     persistirRemisiones();
     guardar();renderPagos();updateObsBalance(ex);
     sincronizarRemision(ex);
-    toast('Remisión '+ex.folio+' actualizada ✓ — puedes registrar el cobro abajo','ok',4000);
-    setTimeout(()=>document.getElementById('pagosSection')?.scrollIntoView({behavior:'smooth',block:'start'}),400);
+    _desbloquearPDF(true);
     return;
   }
 
@@ -1217,9 +1264,6 @@ async function registrarRemision(){
   const okGuardado=persistirRemisiones();
   guardar();renderPagos();updateObsBalance(rem);
   sincronizarRemision(rem);
-  if(okGuardado) toast('Remisión '+folio+' guardada ✓ — puedes registrar el cobro abajo','ok',4000);
-  // Auto-scroll al panel de cobro para que el vendedor lo vea activado de inmediato
-  setTimeout(()=>document.getElementById('pagosSection')?.scrollIntoView({behavior:'smooth',block:'start'}),400);
 }
 
 // ── Sincronizar remisión con Sheets (sin PDF) ─────────────────
@@ -1419,8 +1463,12 @@ async function cobrarRemota(folio){
   loadRemCobro(shadow.id);
 }
 
-function verHist(){renderRems(remisiones);document.getElementById('ovHist').classList.add('open')}
-function filtRems(q){const lq=q.toLowerCase();renderRems(remisiones.filter(r=>r.folio.toLowerCase().includes(lq)||r.cliente.toLowerCase().includes(lq)))}
+function verHist(){renderRems(remisiones.slice(0,15));document.getElementById('ovHist').classList.add('open')}
+function filtRems(q){
+  if(!q){renderRems(remisiones.slice(0,15));return;}
+  const lq=q.toLowerCase();
+  renderRems(remisiones.filter(r=>(r.folio||'').toLowerCase().includes(lq)||(r.cliente||'').toLowerCase().includes(lq)));
+}
 function renderRems(list){
   const div=document.getElementById('remList');
   if(!list.length){div.innerHTML='<div class="es"><div class="es-ic">📋</div><div>Sin remisiones</div></div>';return}
@@ -1429,11 +1477,11 @@ function renderRems(list){
       <div class="rem-fo">${r.folio}</div>
       <div class="rem-cl">${r.cliente} · ${r.fecha}</div>
     </div>
-    <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
       ${_estadoBadge(r)}
       <div class="rem-to">${fmt(r.total)} MXN</div>
-      ${r.estado!=='cancelada'?`<button class="btn" style="padding:4px 9px;font-size:11px;background:#fff0f0;color:#c0392b;border:1px solid #fecaca;border-radius:6px" onclick="event.stopPropagation();abrirCancelacion('${r.id}')">🚫 Cancelar</button>`:''}
-      <button class="rem-del" onclick="event.stopPropagation();delRem('${r.id}')">✕</button>
+      ${r.estado!=='cancelada'&&r.estado!=='pagado'?`<button class="btn" style="padding:4px 8px;font-size:11px;background:#e0f0ff;color:#1a56a0;border:1px solid #bfdbfe;border-radius:6px" onclick="event.stopPropagation();modificarRem('${r.id}')">✏️ Modificar</button>`:''}
+      ${r.estado!=='cancelada'?`<button class="btn" style="padding:4px 8px;font-size:11px;background:#fff0f0;color:#c0392b;border:1px solid #fecaca;border-radius:6px" onclick="event.stopPropagation();abrirCancelacion('${r.id}')">🚫 Cancelar</button>`:''}
     </div>
   </div>`).join('');
 }
@@ -1442,13 +1490,28 @@ function loadRem(id){
   if(!r){toast('No se encontró la remisión en este dispositivo','err');return;}
   if(!r.data){toast('Esta remisión no tiene detalle local para reabrir','warn');return;}
   restore(r.data);renderTable();calcTotals();closeOv('ovHist');remActualId=r.id;
-  renderPagos();updateObsBalance(r);toast('Remision '+r.folio+' cargada','ok');
+  renderPagos();updateObsBalance(r);_desbloquearPDF(true);toast('Remisión '+r.folio+' cargada','ok');
 }
+// ── Modificar remisión existente ──────────────────────────────
+function modificarRem(id){
+  const r=remisiones.find(x=>String(x.id)===String(id));
+  if(!r){toast('No se encontró la remisión','err');return;}
+  if(!r.data){toast('Esta remisión no tiene detalle local para modificar','warn');return;}
+  // Cargar en formulario igual que loadRem pero dejando r.sincronizado=false
+  restore(r.data);renderTable();calcTotals();closeOv('ovHist');
+  remActualId=r.id;
+  // Limpiar pagos para que el asesor los reasigne
+  r.pagos=[];r.saldo=r.total;r.estado='pendiente';r.sincronizado=false;
+  _desbloquearPDF(false); // bloquear PDF hasta re-registrar
+  renderPagos();
+  toast('Remisión '+r.folio+' cargada para modificar — haz cambios y pulsa REGISTRAR','ok',5000);
+}
+
 function delRem(id){
   if(!confirm('¿Eliminar esta remisión?'))return;
   remisiones=remisiones.filter(r=>String(r.id)!==String(id));
   if(String(remActualId)===String(id)){remActualId=null;renderPagos();}
-  persistirRemisiones();renderRems(remisiones);toast('Eliminada');
+  persistirRemisiones();renderRems(remisiones.slice(0,15));toast('Eliminada');
 }
 function nuevaRem(){
   if(!confirm('¿Nueva remisión? Se perderán los datos no guardados.'))return;
@@ -1743,7 +1806,8 @@ function descargarPDF(remOverride){
     doc.setFontSize(20).setTextColor(...GRN);
     doc.text(folio_,ML+CW,y+14,{align:'right'});
     doc.setFontSize(7).setFont('helvetica','normal').setTextColor(...MUT);
-    doc.text(fecha_,ML+CW,y+19,{align:'right'});
+    const horaActual=new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+    doc.text(fecha_+' · '+horaActual,ML+CW,y+19,{align:'right'});
     y+=hdrH;
     doc.setDrawColor(...BRD).setLineWidth(0.4).line(ML,y,ML+CW,y);
     y+=4;
@@ -1964,9 +2028,30 @@ function descargarPDF(remOverride){
     const letraY = ty_ + 10;
     doc.text(letraLines,tx+4+(totW-8)/2,letraY,{align:'center'});
 
+    // ── FIRMA DEL CLIENTE ────────────────────────────────
+    const firmaBase=_regen?(_d&&_d._firma||null):_firmaData;
+    let firmaY = letraY + letterH + 4;
+    if(firmaBase){
+      try{
+        const firmaW=52, firmaH=18;
+        const firmaX=ML;
+        // Línea punteada
+        doc.setDrawColor(...BRD).setLineWidth(0.3);
+        doc.setLineDashPattern([1,1],0);
+        doc.line(firmaX,firmaY+firmaH,firmaX+firmaW,firmaY+firmaH);
+        doc.setLineDashPattern([],0);
+        // Imagen de la firma
+        doc.addImage(firmaBase,'PNG',firmaX,firmaY,firmaW,firmaH);
+        // Texto bajo la línea
+        doc.setFontSize(6.5).setFont('helvetica','normal').setTextColor(...MUT);
+        doc.text('Firma del cliente',firmaX+firmaW/2,firmaY+firmaH+4,{align:'center'});
+        firmaY=firmaY+firmaH+8;
+      }catch(e){}
+    }
+
     // ── PIE ───────────────────────────────────────────────
     const ftH=6;
-    const footerY = letraY + letterH + 6;
+    const footerY = firmaBase ? firmaY + 2 : letraY + letterH + 6;
 
     doc.setFillColor(...BG).setDrawColor(...BRD).setLineWidth(0.3);
     doc.roundedRect(ML,footerY,CW,ftH,2,2,'FD');
@@ -1995,16 +2080,19 @@ function descargarPDF(remOverride){
       for(let pg=1;pg<=pageCount;pg++){
         doc.setPage(pg);
         doc.saveGraphicsState();
-        doc.setGState(doc.GState({opacity:0.13}));
-        doc.setFontSize(52).setFont('helvetica','bold').setTextColor(192,57,43);
+        doc.setGState(doc.GState({opacity:0.25}));
+        doc.setFontSize(58).setFont('helvetica','bold').setTextColor(192,57,43);
         doc.text('CANCELADO',ML+CW/2,PH/2,{align:'center',angle:30});
+        doc.setFontSize(32).setTextColor(192,57,43);
+        doc.text('CANCELADO',ML+CW/2,PH/2+40,{align:'center',angle:30});
         doc.restoreGraphicsState();
       }
-      // Línea roja en la parte superior del PDF para que sea muy visible
-      doc.setDrawColor(192,57,43).setLineWidth(3).line(ML,12,ML+CW,12);
-      doc.setFontSize(8).setFont('helvetica','bold').setTextColor(192,57,43);
+      // Banda roja en la parte superior
+      doc.setFillColor(192,57,43).rect(ML,6,CW,14,'F');
+      doc.setFontSize(9).setFont('helvetica','bold').setTextColor(255,255,255);
       const motivo=remActivo.motivoCancelacion?(' — '+remActivo.motivoCancelacion):'';
-      doc.text('⚠ REMISIÓN CANCELADA'+motivo,ML+CW/2,10,{align:'center'});
+      const fechaCan=remActivo.fechaCancelacion||'';
+      doc.text('⚠ REMISIÓN CANCELADA'+motivo+(fechaCan?' · '+fechaCan:''),ML+CW/2,14,{align:'center'});
     }
 guardarEnDrive(doc,folio_,cNombre,tot,filename,_regen?remOverride:null);
     if(_regen)return; // regeneración: solo subir a Drive con el folio definitivo, sin descargar/compartir
@@ -2156,19 +2244,17 @@ function setAtajoMonto(pct){
 }
 
 function onCheckPagado(checked){
-  if(!remActualId){
-    document.getElementById('checkPagado').checked=false;
-    toast('Registra la remisión primero','err');return;
-  }
-  const r=remisiones.find(x=>x.id===remActualId);
-  if(!r)return;
-  if(r.estado==='pagado'&&!checked){
+  // En el nuevo flujo el checkbox solo prepara el pago — REGISTRAR lo aplica todo.
+  // Si ya hay remisión activa con estado pagado, no permitir desmarcar aquí.
+  const r=remActualId?remisiones.find(x=>x.id===remActualId):null;
+  if(r&&r.estado==='pagado'&&!checked){
     document.getElementById('checkPagado').checked=true;
-    toast('Ya está pagada. Usa "Anular pago" para corregir.','err');return;
+    toast('Ya está pagada. Usa "Anular pago" para corregir.','warn');return;
   }
+  if(checked){ prepararPago('completo'); }
   const wm=document.getElementById('wmPagado');
   const aa=document.getElementById('abonoArea');
-  if(checked){
+  if(checked&&r&&r.estado==='pagado'){
     const fecha=new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
     const monto=r.saldo;
     const uuid=uuidPago();
@@ -2189,7 +2275,7 @@ function onCheckPagado(checked){
 }
 
 function registrarPago(){
-  if(!remActualId){toast('Registra la remisión primero','err');return;}
+  if(!remActualId){toast('Usa el botón REGISTRAR para guardar primero','warn',3000);return;}
   const r=remisiones.find(x=>x.id===remActualId);
   if(!r||r.estado==='pagado'){toast('Ya está marcada como pagada','err');return;}
   const monto=Math.round(parseFloat(document.getElementById('montoAbono').value||0)*100)/100;
@@ -2279,6 +2365,97 @@ function _calcTotalFormulario(){
   return Math.round((sub+iva-sub*(dp/100))*100)/100;
 }
 
+// ── PDF bloqueado/desbloqueado ────────────────────────────────
+function _desbloquearPDF(si){
+  const btn=document.getElementById('btnDescargarPDF');
+  if(!btn)return;
+  if(si){btn.disabled=false;btn.style.opacity='1';btn.style.cursor='pointer';btn.innerHTML='⬇️ Descargar PDF';}
+  else{btn.disabled=true;btn.style.opacity='.45';btn.style.cursor='not-allowed';btn.innerHTML='🔒 PDF';}
+}
+function descargarPDFSiRegistrado(){
+  if(!remActualId){toast('Pulsa REGISTRAR primero para guardar la remisión','warn',3500);return;}
+  descargarPDF();
+}
+
+// ── Estado de pago pendiente (antes de registrar) ─────────────
+let _pagoPreparado=null; // {tipo:'abono'|'completo', monto}
+function prepararPago(tipo){
+  const monto=tipo==='completo'
+    ? (remActualId?remisiones.find(r=>r.id===remActualId)?.saldo||0 : _calcTotalFormulario())
+    : Math.round(parseFloat(document.getElementById('montoAbono').value||0)*100)/100;
+  if(monto<=0){toast('Ingresa un monto válido','err');return;}
+  _pagoPreparado={tipo,monto};
+  const label=tipo==='completo'?'✅ Pago completo: '+fmt(monto)+' MXN':'💛 Abono: '+fmt(monto)+' MXN';
+  toast(label+' — ahora pulsa REGISTRAR','ok',4000);
+}
+
+// ── REGISTRAR — botón principal ───────────────────────────────
+async function registrarTodo(){
+  const sn=snap();
+  const activos=sn.items.filter(i=>(+i.qty>0)&&(+i.precio>0));
+  if(!activos.length){toast('Agrega al menos un producto con cantidad y precio','err');return;}
+
+  const btn=document.getElementById('btnRegistrar');
+  if(btn){btn.disabled=true;btn.innerHTML='⏳ Registrando…';}
+
+  // Obtener GPS justo aquí (acción directa del usuario → iOS lo permite)
+  const gps=await _obtenerGPS();
+
+  try{
+    // 1) Guardar/actualizar remisión
+    await registrarRemision(gps);
+
+    // 2) Aplicar pago preparado si hay uno
+    if(_pagoPreparado&&remActualId){
+      const r=remisiones.find(x=>x.id===remActualId);
+      if(r&&r.estado!=='pagado'){
+        const {tipo,monto}=_pagoPreparado;
+        const fecha=new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
+        const uuid=uuidPago();
+        const esPagoCompleto=tipo==='completo'||monto>=r.saldo-0.01;
+        if(esPagoCompleto){
+          r.pagos=r.pagos||[];
+          r.pagos.push({uuid,tipo:'pago_completo',monto:r.saldo,fecha,device:DEVICE_ID});
+          r.saldo=0;r.estado='pagado';
+          const wm=document.getElementById('wmPagado');
+          if(wm){wm.style.display='flex';wm.style.animation='wm-aparecer .4s ease';}
+          toast('✅ PAGADO COMPLETO','ok',3000);
+        } else {
+          const sd2=Math.round((r.saldo-monto)*100)/100;
+          r.pagos=r.pagos||[];
+          r.pagos.push({uuid,tipo:'abono',monto,fecha,saldo_despues:sd2,device:DEVICE_ID});
+          r.saldo=sd2;r.estado='abono';
+          toast('💛 Abono de '+fmt(monto)+' registrado. Saldo: '+fmt(sd2),'ok',3000);
+        }
+        updateObsBalance(r);persistirRemisiones();renderPagos();
+        enviarPagoConCola(r,r.pagos[r.pagos.length-1]);
+      }
+      _pagoPreparado=null;
+    }
+
+    // 3) Desbloquear PDF
+    _desbloquearPDF(true);
+
+    // 4) Generar y subir PDF a Drive automáticamente
+    // El vendedor no tiene que hacer nada — si no hay internet queda en cola y se sube al conectar.
+    const remActiva=remisiones.find(r=>String(r.id)===String(remActualId));
+    if(remActiva){
+      toast('Registrado ✓ — generando PDF…','ok',2000);
+      // Pequeño delay para que el DOM y jsPDF estén listos
+      setTimeout(()=>{
+        try{
+          descargarPDF(remActiva); // _regen=true → solo sube a Drive, no descarga al celular
+        }catch(e){ console.warn('auto-PDF',e); }
+      },400);
+    } else {
+      toast('Remisión registrada ✓','ok',3000);
+    }
+
+  }finally{
+    if(btn){btn.disabled=false;btn.innerHTML='✅ REGISTRAR';}
+  }
+}
+
 // ── Cancelar remisión ──────────────────────────────────────────
 let _cancelarId=null;
 function abrirCancelacion(id){
@@ -2296,7 +2473,9 @@ async function confirmarCancelacion(){
   if(!motivo){toast('Escribe el motivo de cancelación','err');return;}
   const r=remisiones.find(x=>String(x.id)===String(_cancelarId));
   if(!r){toast('Remisión no encontrada','err');return;}
+  const ahora=new Date();
   r.estado='cancelada';r.motivoCancelacion=motivo;r.sincronizado=false;
+  r.fechaCancelacion=ahora.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+ahora.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
   persistirRemisiones();
   closeOv('ovCancelar');_cancelarId=null;
   if(remActualId===r.id)renderPagos();
@@ -2546,6 +2725,65 @@ function actualizarBadgePendientes(){
 }
 
 function closeOv(id){document.getElementById(id).classList.remove('open')}
+
+// ── Firma digital del cliente ─────────────────────────────────
+let _firmaData=null; // base64 PNG de la firma actual
+let _firmaDrawing=false;
+
+function abrirFirma(){
+  document.getElementById('ovFirma').classList.add('open');
+  const canvas=document.getElementById('firmaCanvas');
+  // Ajustar width real al tamaño display
+  canvas.width=canvas.offsetWidth||500;
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle='#0B2D4A';ctx.lineWidth=2.5;ctx.lineCap='round';ctx.lineJoin='round';
+  // Si ya hay firma, mostrarla
+  if(_firmaData){const img=new Image();img.onload=()=>ctx.drawImage(img,0,0,canvas.width,canvas.height);img.src=_firmaData;}
+
+  function pos(e){
+    const r=canvas.getBoundingClientRect();
+    const src=e.touches?e.touches[0]:e;
+    return{x:(src.clientX-r.left)*(canvas.width/r.width),y:(src.clientY-r.top)*(canvas.height/r.height)};
+  }
+  function down(e){e.preventDefault();_firmaDrawing=true;const p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);}
+  function move(e){e.preventDefault();if(!_firmaDrawing)return;const p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();}
+  function up(e){e.preventDefault();_firmaDrawing=false;}
+  canvas.onmousedown=down;canvas.onmousemove=move;canvas.onmouseup=up;canvas.onmouseleave=up;
+  canvas.ontouchstart=down;canvas.ontouchmove=move;canvas.ontouchend=up;
+}
+function limpiarFirmaCanvas(){
+  const canvas=document.getElementById('firmaCanvas');
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+}
+function confirmarFirma(){
+  const canvas=document.getElementById('firmaCanvas');
+  // Verificar que hay algo dibujado
+  const ctx=canvas.getContext('2d');
+  const data=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+  const hayTrazo=Array.from(data).some((v,i)=>i%4===3&&v>0);
+  if(!hayTrazo){toast('Dibuja la firma primero','err');return;}
+  _firmaData=canvas.toDataURL('image/png');
+  // Mostrar preview en el documento
+  const img=document.getElementById('firmaImg');
+  const ph=document.getElementById('firmaPlaceholder');
+  if(img){img.src=_firmaData;img.style.display='block';}
+  if(ph)ph.style.display='none';
+  const btn=document.getElementById('btnBorrarFirma');if(btn)btn.style.display='';
+  closeOv('ovFirma');
+  toast('Firma guardada ✓','ok');
+  autosave();
+}
+function borrarFirma(){
+  _firmaData=null;
+  const img=document.getElementById('firmaImg');
+  const ph=document.getElementById('firmaPlaceholder');
+  if(img){img.src='';img.style.display='none';}
+  if(ph)ph.style.display='';
+  const btn=document.getElementById('btnBorrarFirma');if(btn)btn.style.display='none';
+  autosave();
+}
 document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open')}));
 let _toastTimer=null;
 function toast(msg,type='',dur=2800){const t=document.getElementById('toast');clearTimeout(_toastTimer);t.textContent=msg;t.className='toast'+(type?' '+type:'');t.classList.add('show');if(dur>0)_toastTimer=setTimeout(()=>t.classList.remove('show'),dur);}
