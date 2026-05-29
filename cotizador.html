@@ -576,8 +576,10 @@ function actualizarPanelConexion(){
 function _guardarEnColaCot(entry){
   const cola=leerSeguro('cola_cot',[]);
   const key=String(entry.id||entry.folio);
-  const f=cola.filter(e=>String(e.id||e.folio)!==key); // uno por id (sobreescribe)
-  f.push(entry);
+  // NUNCA guardar el base64 del PDF en localStorage — pesa 400-600KB por cotización.
+  const {pdf,...light}=entry;
+  const f=cola.filter(e=>String(e.id||e.folio)!==key);
+  f.push(light);
   guardarSeguro('cola_cot',JSON.stringify(f));
   actualizarPanelConexion();
 }
@@ -594,19 +596,12 @@ async function procesarColaCot(){
   let ok=0;
   for(const entry of [...cola]){
     try{
-      const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
-        body:JSON.stringify({tipo:'cotizacion',id:entry.id,folio:entry.folio,cliente:entry.cliente,fecha:entry.fecha,total:entry.total,filename:entry.filename,pdf:entry.pdf,device:DEVICE_ID})});
-      if(res.ok){
-        const d=await res.json();
-        if(d&&d.ok){
-          _dequeueCot(entry.id||entry.folio);
-          ok++;
-          // renumeración TMP-→SUM-: regenerar PDF con folio definitivo y resubir
-          if(d.folio&&String(entry.folio).indexOf('TMP-')===0&&d.folio!==entry.folio&&entry.data&&window.jspdf){
-            descargarPDF({id:entry.id,folio:d.folio,cliente:entry.cliente,fecha:entry.fecha,data:entry.data});
-          }
-        }
-      }
+      // entry.pdf ya no existe en localStorage — regeneramos el PDF desde entry.data
+      if(!entry.data||!window.jspdf)continue;
+      // Regenerar PDF y subir (descargarPDF en modo regen: solo sube, no descarga)
+      descargarPDF({id:entry.id,folio:entry.folio,cliente:entry.cliente,fecha:entry.fecha,data:entry.data});
+      _dequeueCot(entry.id||entry.folio);
+      ok++;
     }catch(e){}
   }
   if(ok>0)toast('Cotización(es) subidas a Drive: '+ok+' ✓','ok');

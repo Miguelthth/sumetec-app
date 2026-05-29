@@ -623,6 +623,20 @@ function leerSeguro(clave,porDefecto){
   }
 }
 
+// Limpia memoria acumulada al arrancar: borra base64 huérfanos y poda remisiones viejas sincronizadas.
+function _limpiarMemoriaAntigua(){
+  // 1) Quitar pdf (base64) de entradas viejas en cola_pdf (migración de formato antiguo)
+  try{
+    const cola=leerSeguro('cola_pdf',[]);
+    let cambio=false;
+    for(const e of cola){ if(e.pdf){ delete e.pdf; cambio=true; } }
+    if(cambio) guardarSeguro('cola_pdf',JSON.stringify(cola));
+  }catch(_){}
+  // 2) Podar data pesada de remisiones ya sincronizadas (libera espacio significativo)
+  _podarRemisionesSincronizadas();
+  try{ persistirRemisiones(); }catch(_){}
+}
+
 // Carga remisiones a prueba de corrupción, con respaldo de rescate (r_rems_bak).
 function cargarRemisiones(){
   let rems=leerSeguro('r_rems',null);
@@ -824,6 +838,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   else renderPagos();
   setTimeout(syncPrintHeader,500);
   startHeartbeat();
+  _limpiarMemoriaAntigua();
   reconciliarPendientes();
   procesarCola();
   procesarColaRemisiones();
@@ -896,7 +911,6 @@ function guardarEnDrive(doc,folio,cliente,total,filename,remParam){
     total:(+total||0).toFixed(2),
     saldo:((remActiva?remActiva.saldo:total)||0).toFixed?((remActiva?remActiva.saldo:total)||0).toFixed(2):String((remActiva?remActiva.saldo:total)||0),
     estado:remActiva?remActiva.estado:'pendiente',
-    filename:filename||folio+'.pdf',
     pdf:b64, device:DEVICE_ID};
   _guardarEnColaPDF(entry); // nunca se pierde para Drive
   actualizarBadgePendientes();
@@ -922,8 +936,11 @@ function guardarEnDrive(doc,folio,cliente,total,filename,remParam){
 function _guardarEnColaPDF(entry){
   const cola=leerSeguro('cola_pdf',[]);
   const key=String(entry.id||entry.folio);
-  const filtrada=cola.filter(e=>String(e.id||e.folio)!==key); // solo el más reciente por id
-  filtrada.push(entry);
+  // NUNCA guardar el base64 del PDF en localStorage — pesa 400-600KB por PDF.
+  // Solo guardamos metadata ligera; regeneramos el PDF cuando haya señal.
+  const {pdf,...light}=entry;
+  const filtrada=cola.filter(e=>String(e.id||e.folio)!==key);
+  filtrada.push(light);
   guardarSeguro('cola_pdf',JSON.stringify(filtrada));
 }
 function _dequeuePDF(key){
@@ -939,25 +956,21 @@ function _encolarPDFsiHace(rem){
 }
 async function procesarColaPDF(){
   if(!isOnline)return;
-  const url=getScriptUrl();if(!url)return;
+  if(!window.jspdf)return; // jsPDF no disponible aún (sin caché), reintentar luego
   const cola=leerSeguro('cola_pdf',[]);
   if(!cola.length)return;
   let ok=0;
   for(const entry of [...cola]){
+    // Buscar la remisión local para regenerar el PDF con sus datos
+    const rem=remisiones.find(x=>String(x.id)===String(entry.id));
+    if(!rem||!rem.data)continue; // sin datos locales no podemos regenerar
     try{
-      const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(entry)});
-      if(res.ok){
-        const d=await res.json();
-        if(d&&d.ok){
-          _dequeuePDF(entry.id||entry.folio);
-          const r=remisiones.find(x=>String(x.id)===String(entry.id));
-          if(r&&d.folio)_aplicarFolioDefinitivo(r,d.folio);
-          ok++;
-        }
-      }
+      // descargarPDF(rem) regenera el PDF y lo sube a Drive (modo regen: no descarga)
+      descargarPDF(rem);
+      ok++;
     }catch(e){}
   }
-  if(ok>0)toast('PDF(s) subidos a Drive: '+ok+' ✓','ok');
+  if(ok>0)toast('Subiendo PDF(s) a Drive…','ok');
   actualizarBadgePendientes();
 }
 
