@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -316,7 +316,6 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   <button class="btn btn-o" onclick="verCobros()" style="color:#ff8c69;border-color:rgba(255,140,105,.35)" id="btnCobros">💰 Cobros</button>
   <div class="tb-div"></div>
   <button class="btn btn-o" onclick="abrirEmpresa()">🏢 Mi empresa</button>
-  <button class="btn btn-o" onclick="abrirCatalogos()">⚙️ Catálogos</button>
   <div class="tb-div"></div>
   <button class="btn btn-g" onclick="window.print()">🖨️ Imprimir</button>
   <button class="btn btn-p" onclick="descargarPDF()">⬇️ Descargar PDF</button>
@@ -459,7 +458,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <div id="abonoArea">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:flex;align-items:center;gap:8px;margin-bottom:12px">
         <div style="flex:1;height:1px;background:var(--border)"></div>
-        O registrar abono parcial
+        Registrar abono o pago completo
         <div style="flex:1;height:1px;background:var(--border)"></div>
       </div>
       <input id="montoAbono" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="$ 0.00" class="monto-input-grande" style="margin-bottom:10px">
@@ -468,13 +467,28 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         <button class="btn btn-g" style="justify-content:center;padding:10px;font-size:13px;font-weight:600" onclick="setAtajoMonto(0.75)">75%</button>
         <button class="btn btn-p" style="justify-content:center;padding:10px;font-size:13px;font-weight:600" onclick="setAtajoMonto(1)">Total</button>
       </div>
-      <button class="btn btn-p" style="width:100%;justify-content:center;padding:14px;font-size:15px;font-weight:700;border-radius:10px" onclick="registrarPago()">💰 Registrar pago</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="btn btn-p" style="justify-content:center;padding:14px;font-size:14px;font-weight:700;border-radius:10px" onclick="registrarPagoConGuardar('abono')">💛 Registrar abono</button>
+        <button class="btn" style="justify-content:center;padding:14px;font-size:14px;font-weight:700;border-radius:10px;background:#1C6E4A;color:#fff" onclick="registrarPagoConGuardar('completo')">✅ Pago completo</button>
+      </div>
     </div>
   </div>
 </div>
 </div>
 
 <div class="ov" id="ovHist"><div class="modal"><div class="modal-hd"><div class="modal-title">📋 Historial de Remisiones</div><button class="mx" onclick="closeOv('ovHist')">✕</button></div><input class="mi" type="text" placeholder="Buscar por folio o cliente…" oninput="filtRems(this.value)"><div class="ml" id="remList"></div></div></div>
+
+<div class="ov" id="ovCancelar"><div class="modal" style="max-width:420px">
+  <div class="modal-hd"><div class="modal-title" style="color:#c0392b">🚫 Cancelar Remisión</div><button class="mx" onclick="closeOv('ovCancelar')">✕</button></div>
+  <div id="cancelarInfo" style="font-size:13px;color:var(--muted);margin-bottom:16px;padding:10px 14px;background:#fff5f5;border-radius:8px;border:1px solid #fecaca"></div>
+  <div class="fg"><label>Motivo de cancelación <span style="color:#c0392b">*</span></label>
+    <input id="cancelarMotivo" type="text" placeholder="Ej: Error en productos, cliente canceló pedido…" style="border:2px solid #fecaca">
+  </div>
+  <div style="display:flex;gap:9px;margin-top:4px">
+    <button class="btn" style="flex:1;justify-content:center;padding:11px;background:var(--bg);color:var(--muted)" onclick="closeOv('ovCancelar')">Regresar</button>
+    <button class="btn" style="flex:1;justify-content:center;padding:11px;background:#c0392b;color:#fff;font-weight:700" onclick="confirmarCancelacion()">🚫 Confirmar cancelación</button>
+  </div>
+</div></div>
 
 <div class="ov" id="ovCobros"><div class="modal" style="max-width:520px">
   <div class="modal-hd">
@@ -895,15 +909,40 @@ function enviarNuevoADrive(tipo,datos){
   }).catch(()=>{});
 }
 
+// Captura GPS silencioso (sin aviso al cliente). Resuelve en máx 4s; si falla devuelve null.
+function _obtenerGPS(){
+  return new Promise(resolve=>{
+    if(!navigator.geolocation){resolve(null);return;}
+    const t=setTimeout(()=>resolve(null),4000);
+    navigator.geolocation.getCurrentPosition(
+      p=>{clearTimeout(t);resolve({lat:p.coords.latitude.toFixed(6),lng:p.coords.longitude.toFixed(6)});},
+      ()=>{clearTimeout(t);resolve(null);},
+      {enableHighAccuracy:true,timeout:4000,maximumAge:60000}
+    );
+  });
+}
+
 // Guarda el PDF generado en Drive y registra la remisión en Sheets.
 // SIEMPRE encola el PDF primero (red de seguridad): si no hay señal o falla,
 // se reintenta al volver la conexión. Incluye `id` para que el backend NO duplique fila.
-function guardarEnDrive(doc,folio,cliente,total,filename,remParam){
+async function guardarEnDrive(doc,folio,cliente,total,filename,remParam){
   const url=getScriptUrl();if(!url)return;
   let b64;
   try{ b64=doc.output('datauristring').split(',')[1]; }
   catch(e){ console.warn('guardarEnDrive b64',e); return; }
   const remActiva=remParam||remisiones.find(r=>String(r.id)===String(remActualId));
+  // Hora de descarga (momento exacto en que el vendedor genera el PDF)
+  const horaDescarga=new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  // GPS silencioso — no bloquea ni avisa al cliente
+  const gps=await _obtenerGPS();
+  // Datos del cliente del formulario (para registro en hoja Clientes)
+  const datosCliente={
+    nombre:document.getElementById('c_nombre')?.value||'',
+    tel:document.getElementById('c_tel')?.value||'',
+    dir:document.getElementById('c_dir')?.value||'',
+    cp:document.getElementById('c_cp')?.value||'',
+    rfc:''
+  };
   const entry={tipo:'remision',
     id:remActiva?remActiva.id:'',
     folio, cliente:cliente||'CLIENTE',
@@ -911,6 +950,8 @@ function guardarEnDrive(doc,folio,cliente,total,filename,remParam){
     total:(+total||0).toFixed(2),
     saldo:((remActiva?remActiva.saldo:total)||0).toFixed?((remActiva?remActiva.saldo:total)||0).toFixed(2):String((remActiva?remActiva.saldo:total)||0),
     estado:remActiva?remActiva.estado:'pendiente',
+    horaDescarga, lat:gps?gps.lat:'', lng:gps?gps.lng:'',
+    datosCliente,
     pdf:b64, device:DEVICE_ID};
   _guardarEnColaPDF(entry); // nunca se pierde para Drive
   actualizarBadgePendientes();
@@ -1130,9 +1171,10 @@ async function registrarRemision(){
     ex.sincronizado=false;
     remActualId=ex.id;
     persistirRemisiones();
-    guardar();renderPagos();
+    guardar();renderPagos();updateObsBalance(ex);
     sincronizarRemision(ex);
-    toast('Remisión '+ex.folio+' actualizada ✓','ok');
+    toast('Remisión '+ex.folio+' actualizada ✓ — puedes registrar el cobro abajo','ok',4000);
+    setTimeout(()=>document.getElementById('pagosSection')?.scrollIntoView({behavior:'smooth',block:'start'}),400);
     return;
   }
 
@@ -1173,9 +1215,11 @@ async function registrarRemision(){
   if(fEl){fEl.innerText=folio;syncFolio(folio);}
   remisiones.unshift(rem);remActualId=rem.id;
   const okGuardado=persistirRemisiones();
-  guardar();renderPagos();
+  guardar();renderPagos();updateObsBalance(rem);
   sincronizarRemision(rem);
-  if(okGuardado) toast('Remisión '+folio+' guardada ✓','ok');
+  if(okGuardado) toast('Remisión '+folio+' guardada ✓ — puedes registrar el cobro abajo','ok',4000);
+  // Auto-scroll al panel de cobro para que el vendedor lo vea activado de inmediato
+  setTimeout(()=>document.getElementById('pagosSection')?.scrollIntoView({behavior:'smooth',block:'start'}),400);
 }
 
 // ── Sincronizar remisión con Sheets (sin PDF) ─────────────────
@@ -1388,6 +1432,7 @@ function renderRems(list){
     <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
       ${_estadoBadge(r)}
       <div class="rem-to">${fmt(r.total)} MXN</div>
+      ${r.estado!=='cancelada'?`<button class="btn" style="padding:4px 9px;font-size:11px;background:#fff0f0;color:#c0392b;border:1px solid #fecaca;border-radius:6px" onclick="event.stopPropagation();abrirCancelacion('${r.id}')">🚫 Cancelar</button>`:''}
       <button class="rem-del" onclick="event.stopPropagation();delRem('${r.id}')">✕</button>
     </div>
   </div>`).join('');
@@ -1494,8 +1539,10 @@ function loadGSCache(){
   const cp=localStorage.getItem('gs_cp'),cc=localStorage.getItem('gs_cc');
   if(cp)try{PRODUCTOS=JSON.parse(cp);}catch(e){}
   if(cc)try{CLIENTES=JSON.parse(cc);}catch(e){}
-  const url=localStorage.getItem('gs_url');
-  if(url&&navigator.onLine)setTimeout(async()=>{try{
+  // Siempre usar URL_CATALOGOS hardcodeada — no requiere configuración manual
+  const url=URL_CATALOGOS;
+  if(!localStorage.getItem('gs_url'))localStorage.setItem('gs_url',url);
+  if(navigator.onLine)setTimeout(async()=>{try{
     const [rP,rC]=await Promise.all([fetch(url+'?tipo=catalogo'),fetch(url+'?tipo=clientes')]);
     if(!rP.ok||!rC.ok)return;
     const jP=await rP.json(),jC=await rC.json();
@@ -1688,7 +1735,7 @@ function descargarPDF(remOverride){
         const ratio=logoEl.naturalWidth/logoEl.naturalHeight;
         _lh=Math.min(_logoTarget, Math.max(20,(empresa.logoH||80)*1.10));
         _lw=Math.min(90,_lh*ratio);
-        doc.addImage(logoSrc,ext,ML,y-17,_lw,_lh);
+        doc.addImage(logoSrc,ext,ML,y-17,_lw,_lh,'logo','SLOW');
       }
     }catch(e){}
     doc.setFontSize(8).setFont('helvetica','bold').setTextColor(...NAV);
@@ -1943,6 +1990,22 @@ function descargarPDF(remOverride){
         doc.restoreGraphicsState();
       }
     }
+    if(remActivo&&remActivo.estado==='cancelada'){
+      const pageCount=doc.getNumberOfPages();
+      for(let pg=1;pg<=pageCount;pg++){
+        doc.setPage(pg);
+        doc.saveGraphicsState();
+        doc.setGState(doc.GState({opacity:0.13}));
+        doc.setFontSize(52).setFont('helvetica','bold').setTextColor(192,57,43);
+        doc.text('CANCELADO',ML+CW/2,PH/2,{align:'center',angle:30});
+        doc.restoreGraphicsState();
+      }
+      // Línea roja en la parte superior del PDF para que sea muy visible
+      doc.setDrawColor(192,57,43).setLineWidth(3).line(ML,12,ML+CW,12);
+      doc.setFontSize(8).setFont('helvetica','bold').setTextColor(192,57,43);
+      const motivo=remActivo.motivoCancelacion?(' — '+remActivo.motivoCancelacion):'';
+      doc.text('⚠ REMISIÓN CANCELADA'+motivo,ML+CW/2,10,{align:'center'});
+    }
 guardarEnDrive(doc,folio_,cNombre,tot,filename,_regen?remOverride:null);
     if(_regen)return; // regeneración: solo subir a Drive con el folio definitivo, sin descargar/compartir
 
@@ -2155,6 +2218,103 @@ function registrarPago(){
   enviarPagoConCola(r,r.pagos[r.pagos.length-1]);
 }
 
+// Registrar pago/abono — si la remisión no está guardada aún, la guarda primero automáticamente.
+async function registrarPagoConGuardar(tipo){
+  const monto=tipo==='completo'
+    ? (()=>{ // pago completo: tomar el total del formulario o saldo actual
+        const r=remActualId?remisiones.find(x=>x.id===remActualId):null;
+        return r?r.saldo:_calcTotalFormulario();
+      })()
+    : Math.round(parseFloat(document.getElementById('montoAbono').value||0)*100)/100;
+
+  if(monto<=0){toast('Ingresa un monto válido','err');return;}
+
+  // Si no hay remisión activa → guardar primero
+  if(!remActualId){
+    const sn=snap();
+    const activos=sn.items.filter(i=>(+i.qty>0)&&(+i.precio>0));
+    if(!activos.length){toast('Agrega al menos un producto con cantidad y precio para guardar','err');return;}
+    toast('Guardando remisión primero…','loading',0);
+    await registrarRemision();
+    // Esperar un tick para que remActualId quede asignado
+    await new Promise(r=>setTimeout(r,100));
+  }
+
+  if(!remActualId){toast('No se pudo guardar la remisión','err');return;}
+  const r=remisiones.find(x=>x.id===remActualId);
+  if(!r||r.estado==='pagado'){toast('Ya está marcada como pagada','err');return;}
+  if(monto>r.saldo+0.01){toast('El monto supera el saldo ('+fmt(r.saldo)+')','err');return;}
+
+  const fecha=new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const uuid=uuidPago();
+  const esPagoCompleto=tipo==='completo'||monto>=r.saldo-0.01;
+
+  if(esPagoCompleto){
+    r.pagos=r.pagos||[];
+    r.pagos.push({uuid,tipo:'pago_completo',monto:r.saldo,fecha,device:DEVICE_ID});
+    r.saldo=0;r.estado='pagado';
+    const wm=document.getElementById('wmPagado');
+    if(wm){wm.style.display='flex';wm.style.animation='wm-aparecer .4s ease';}
+    const aa=document.getElementById('abonoArea');if(aa)aa.style.display='none';
+    toast('✅ PAGADO COMPLETO — '+fmt(r.saldo||monto)+' MXN','ok',4000);
+  } else {
+    const sd2=Math.round((r.saldo-monto)*100)/100;
+    r.pagos=r.pagos||[];
+    r.pagos.push({uuid,tipo:'abono',monto,fecha,saldo_despues:sd2,device:DEVICE_ID});
+    r.saldo=sd2;r.estado='abono';
+    toast('💛 Abono de '+fmt(monto)+' registrado. Saldo: '+fmt(sd2)+' MXN','ok');
+  }
+  document.getElementById('montoAbono').value='';
+  updateObsBalance(r);
+  persistirRemisiones();
+  renderPagos();
+  enviarPagoConCola(r,r.pagos[r.pagos.length-1]);
+}
+
+// Total calculado desde el formulario activo (cuando aún no hay remisión guardada)
+function _calcTotalFormulario(){
+  let sub=0,iva=0;
+  items.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const i=q*p;sub+=i;iva+=i*(v/100);}});
+  const dp=+document.getElementById('descPct').value||0;
+  return Math.round((sub+iva-sub*(dp/100))*100)/100;
+}
+
+// ── Cancelar remisión ──────────────────────────────────────────
+let _cancelarId=null;
+function abrirCancelacion(id){
+  const r=remisiones.find(x=>String(x.id)===String(id));
+  if(!r){toast('Remisión no encontrada','err');return;}
+  if(r.estado==='cancelada'){toast('Ya está cancelada','warn');return;}
+  _cancelarId=id;
+  const info=document.getElementById('cancelarInfo');
+  if(info)info.innerHTML='<strong>'+r.folio+'</strong> — '+r.cliente+'<br><span style="color:#c0392b">Total: '+fmt(r.total)+' MXN</span>';
+  const m=document.getElementById('cancelarMotivo');if(m)m.value='';
+  document.getElementById('ovCancelar').classList.add('open');
+}
+async function confirmarCancelacion(){
+  const motivo=document.getElementById('cancelarMotivo')?.value?.trim();
+  if(!motivo){toast('Escribe el motivo de cancelación','err');return;}
+  const r=remisiones.find(x=>String(x.id)===String(_cancelarId));
+  if(!r){toast('Remisión no encontrada','err');return;}
+  r.estado='cancelada';r.motivoCancelacion=motivo;r.sincronizado=false;
+  persistirRemisiones();
+  closeOv('ovCancelar');_cancelarId=null;
+  if(remActualId===r.id)renderPagos();
+  renderRems(remisiones);
+  toast('Remisión '+r.folio+' cancelada','ok');
+  // Sincronizar cancelación con Sheets
+  const url=getScriptUrl();
+  if(url&&isOnline){
+    fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({tipo:'cancelar_remision',id:r.id,folio:r.folio,motivo,device:DEVICE_ID})
+    }).then(res=>res.json()).then(d=>{if(d&&d.ok){r.sincronizado=true;persistirRemisiones();}}).catch(()=>{});
+  }
+  // Regenerar PDF con marca de agua CANCELADO si hay datos locales
+  if(r.data&&window.jspdf&&isOnline){
+    setTimeout(()=>descargarPDF(r),500);
+  }
+}
+
 function updateObsBalance(r){
   const ta=document.getElementById('obs');
   if(!ta)return;
@@ -2188,10 +2348,13 @@ function renderPagos(){
     if(wm)wm.style.display='none';
     if(title)title.textContent='💰 COBRO';
     const pl=document.getElementById('pagosListaCompacta');
-    if(pl)pl.innerHTML="<div style='font-size:12.5px;color:var(--muted);font-style:italic;padding:4px 0'>Carga o guarda una remisión para registrar cobros</div>";
-    const sd=document.getElementById('saldoDisplay');if(sd)sd.textContent='$—';
-    const ch=document.getElementById('checkPagado');if(ch){ch.checked=false;ch.disabled=true;}
-    const aa=document.getElementById('abonoArea');if(aa)aa.style.display='none';
+    if(pl)pl.innerHTML="<div style='font-size:12px;color:var(--muted);font-style:italic'>Sin pagos aún</div>";
+    // Mostrar el total actual del formulario como saldo estimado
+    const totalActual=_calcTotalFormulario();
+    const sd=document.getElementById('saldoDisplay');
+    if(sd)sd.textContent=totalActual>0?fmt(totalActual)+' MXN':'$—';
+    const ch=document.getElementById('checkPagado');if(ch){ch.checked=false;ch.disabled=false;}
+    const aa=document.getElementById('abonoArea');if(aa)aa.style.display='block';
     const btnR=document.getElementById('btnPagoRapido');if(btnR)btnR.style.display='none';
     const wa=document.getElementById('waBtnOffline');if(wa)wa.style.display='none';
     return;
