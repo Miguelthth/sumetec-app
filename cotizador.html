@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -276,7 +276,6 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   <button class="btn btn-p" onclick="crearRem()">📄 Crear remisión</button>
   <div class="tb-div"></div>
   <button class="btn btn-o" onclick="abrirEmpresa()">🏢 Mi empresa</button>
-  <button class="btn btn-o" onclick="abrirCatalogos()">⚙️ Catálogos</button>
   <div class="tb-div"></div>
   <button class="btn btn-g" onclick="window.print()">🖨️ Imprimir</button>
   <button class="btn btn-p" onclick="descargarPDF()">⬇️ Descargar PDF</button>
@@ -685,14 +684,38 @@ function enviarNuevoADrive(tipo,datos){
 }
 
 // Guarda el PDF en Drive y registra la cotización en Sheets.
+// Captura GPS silencioso. Máx 4s; si falla devuelve null.
+function _obtenerGPS(){
+  return new Promise(resolve=>{
+    if(!navigator.geolocation){resolve(null);return;}
+    const t=setTimeout(()=>resolve(null),4000);
+    navigator.geolocation.getCurrentPosition(
+      p=>{clearTimeout(t);resolve({lat:p.coords.latitude.toFixed(6),lng:p.coords.longitude.toFixed(6)});},
+      ()=>{clearTimeout(t);resolve(null);},
+      {enableHighAccuracy:true,timeout:4000,maximumAge:60000}
+    );
+  });
+}
+
 // SIEMPRE encola primero (red de seguridad): si no hay señal o falla, se reintenta
 // al volver la conexión. `id` evita duplicados; `dataSnap` permite regenerar el PDF
 // con el folio definitivo cuando se creó offline (folio TMP-).
-function guardarEnDrive(doc,folio,cliente,total,filename,id,dataSnap){
+async function guardarEnDrive(doc,folio,cliente,total,filename,id,dataSnap){
   const url=getScriptUrl();if(!url)return;
   let b64;
   try{ b64=doc.output('datauristring').split(',')[1]; }
   catch(e){ console.warn('guardarEnDrive b64',e); return; }
+  // Hora de descarga y GPS silencioso
+  const horaDescarga=new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const gps=await _obtenerGPS();
+  // Datos del cliente del formulario
+  const datosCliente={
+    nombre:document.getElementById('c_nombre')?.value||'',
+    tel:document.getElementById('c_tel')?.value||'',
+    dir:document.getElementById('c_dir')?.value||'',
+    cp:document.getElementById('c_cp')?.value||'',
+    rfc:document.getElementById('c_rfc')?.value||''
+  };
   const entry={id:id||uuidCot(),folio,cliente:cliente||'CLIENTE',
     fecha:document.getElementById('fechaDisp').textContent,
     total:(+total||0).toFixed(2),filename:filename||folio+'.pdf',pdf:b64,data:dataSnap||null};
@@ -700,7 +723,8 @@ function guardarEnDrive(doc,folio,cliente,total,filename,id,dataSnap){
   if(!isOnline){ toast('Sin conexión — la cotización se subirá a Drive al volver la señal','warn',4000); return; }
   toast('☁️ Guardando en Drive…','loading',0);
   fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
-    body:JSON.stringify({tipo:'cotizacion',id:entry.id,folio:entry.folio,cliente:entry.cliente,fecha:entry.fecha,total:entry.total,filename:entry.filename,pdf:entry.pdf,device:DEVICE_ID})})
+    body:JSON.stringify({tipo:'cotizacion',id:entry.id,folio:entry.folio,cliente:entry.cliente,fecha:entry.fecha,total:entry.total,filename:entry.filename,pdf:entry.pdf,device:DEVICE_ID,
+      horaDescarga, lat:gps?gps.lat:'', lng:gps?gps.lng:'', datosCliente})})
     .then(r=>r.json())
     .then(d=>{
       if(d&&d.ok){
@@ -973,8 +997,10 @@ function loadGSCache(){
   const cp=localStorage.getItem('gs_cp'),cc=localStorage.getItem('gs_cc');
   if(cp)try{PRODUCTOS=JSON.parse(cp);}catch(e){}
   if(cc)try{CLIENTES=JSON.parse(cc);}catch(e){}
-  const url=localStorage.getItem('gs_url');
-  if(url&&navigator.onLine)setTimeout(async()=>{try{
+  // Siempre usar URL_CATALOGOS hardcodeada — no requiere configuración manual
+  const url=URL_CATALOGOS;
+  if(!localStorage.getItem('gs_url'))localStorage.setItem('gs_url',url);
+  if(navigator.onLine)setTimeout(async()=>{try{
     const [rP,rC]=await Promise.all([fetch(url+'?tipo=catalogo'),fetch(url+'?tipo=clientes')]);
     if(!rP.ok||!rC.ok)return;
     const jP=await rP.json(),jC=await rC.json();
@@ -1173,7 +1199,7 @@ function descargarPDF(remOverride){
         const ratio=logoEl.naturalWidth/logoEl.naturalHeight;
         _lh=Math.min(_logoTarget, Math.max(20,(empresa.logoH||80)*1.10));
         _lw=Math.min(90,_lh*ratio);
-        doc.addImage(logoSrc,ext,ML,y-17,_lw,_lh);
+        doc.addImage(logoSrc,ext,ML,y-17,_lw,_lh,'logo','SLOW');
       }
     }catch(e){}
     doc.setFontSize(8).setFont('helvetica','bold').setTextColor(...NAV);
