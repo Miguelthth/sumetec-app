@@ -63,7 +63,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .ci-val{font-size:12px;color:var(--text);font-weight:500}
 .ci-val input{border:none;background:transparent;font-family:inherit;font-size:12px;color:var(--text);font-weight:500;outline:none;width:100px}
 .ci-val input:focus{background:var(--bg);border-radius:4px;outline:2px solid var(--green)}
-.sp{display:none;position:absolute;background:#fff;border:2px solid var(--border);border-radius:10px;box-shadow:var(--sh2);z-index:500;min-width:300px;max-height:260px;overflow-y:auto}
+.sp{display:none;position:absolute;background:#fff;border:2px solid var(--border);border-radius:10px;box-shadow:var(--sh2);z-index:500;min-width:320px;max-height:420px;overflow-y:auto}
 .sp.open{display:block}
 .sp input{width:100%;padding:9px 12px;border:none;border-bottom:1px solid var(--border);font-family:inherit;font-size:13px;outline:none;border-radius:8px 8px 0 0}
 .sp-item{padding:9px 13px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s}
@@ -352,7 +352,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       </div>
       <div class="doc-meta">
         <div class="doc-meta-i"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span id="fechaDisp">—</span></div>
-        <div class="doc-meta-i"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span id="horaDisp">—</span></div>
+        <span id="horaDisp" style="display:none"></span>
       </div>
     </div>
   </div>
@@ -366,7 +366,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
           <button onclick="abrirNuevoCliente()" style="width:100%;padding:7px;background:#E8F5EF;color:#1C6E4A;border:none;border-radius:6px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer">＋ Agregar nuevo cliente</button>
         </div>
       </div>
-      <div class="fr"><span class="fl">Nombre / Razón Social</span><div class="fv"><input id="c_nombre" type="text" placeholder="—" oninput="autosave()"></div></div>
+      <div class="fr"><span class="fl">Nombre / Razón Social</span><div class="fv"><input id="c_nombre" type="text" placeholder="—" oninput="autosave();_verificarAdeudo(this.value)"></div></div>
+      <div id="adeudoBox" style="display:none;margin:6px 0;padding:10px 12px;background:#fff8e1;border:1.5px solid #f59e0b;border-radius:8px;font-size:12px"></div>
       
       <div class="fr"><span class="fl">Dirección</span><div class="fv"><input id="c_dir" type="text" placeholder="—" oninput="autosave()"></div></div>
       <div class="fr"><span class="fl">C.P.</span><div class="fv"><input id="c_cp" type="text" placeholder="—" oninput="autosave()"></div></div>
@@ -425,8 +426,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <button id="btnPagoRapido" class="btn btn-p no-print" style="width:100%;justify-content:center;padding:11px;margin-top:12px;display:none" onclick="irAPagos()">💰 Registrar Pago</button>
     </div>
   </div>
-  <!-- Firma del cliente — aparece entre los totales y el pie -->
-  <div id="firmaSection" style="padding:10px 32px 14px;border-top:1px solid var(--border);display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap">
+  <!-- Firma del cliente — oculta por defecto, se abre con el botón -->
+  <div style="padding:6px 32px 0;border-top:1px solid var(--border)" class="no-print">
+    <button onclick="toggleFirma()" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:4px 0;font-family:inherit">✍️ Agregar firma del cliente <span id="firmaToggleIcon">▼</span></button>
+  </div>
+  <div id="firmaSection" style="padding:10px 32px 14px;display:none;align-items:flex-start;gap:18px;flex-wrap:wrap">
     <div style="flex:1;min-width:180px">
       <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin-bottom:6px">Firma del cliente</div>
       <div id="firmaPreview" style="border:1.5px dashed var(--border);border-radius:8px;height:64px;display:flex;align-items:center;justify-content:center;background:var(--bg);overflow:hidden;cursor:pointer" onclick="abrirFirma()">
@@ -437,6 +441,16 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         <button class="btn no-print" style="font-size:11px;padding:4px 10px;background:var(--green-light);color:var(--green);border:none;border-radius:6px" onclick="abrirFirma()">✍️ Firmar</button>
         <button class="btn no-print" id="btnBorrarFirma" style="font-size:11px;padding:4px 10px;background:#fff0f0;color:#c0392b;border:none;border-radius:6px;display:none" onclick="borrarFirma()">🗑️ Borrar</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal confirmación de registro -->
+  <div class="ov" id="ovConfirmReg" style="z-index:950">
+    <div style="background:#fff;border-radius:16px;padding:28px 24px;max-width:400px;width:calc(100% - 32px);text-align:center">
+      <div id="confRegIcon" style="font-size:52px;margin-bottom:12px">✅</div>
+      <div id="confRegTitulo" style="font-size:20px;font-weight:800;color:var(--navy);margin-bottom:8px"></div>
+      <div id="confRegDetalle" style="font-size:14px;color:var(--muted);margin-bottom:20px;line-height:1.6"></div>
+      <button class="btn btn-p" style="width:100%;justify-content:center;padding:14px;font-size:15px;font-weight:700;border-radius:10px" onclick="closeOv('ovConfirmReg')">Aceptar</button>
     </div>
   </div>
 
@@ -615,7 +629,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 <script>
 let CLIENTES=[];
 let PRODUCTOS=[];
-let items=[],remisiones=[],_id=1,saveTimer=null,cPanelOpen=false,ivaGlobal=16;
+let items=[],remisiones=[],_id=1,saveTimer=null,cPanelOpen=false,ivaGlobal=0;
 let remActualId=null;
 
 // ── Persistencia segura (a prueba de cuota y corrupción) ──────
@@ -878,10 +892,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   renderFooter();loadGSCache();loadDraft();cargarFolioRemoto();
   if(!items.length)addRow();
   renderTable();calcTotals();
-  // Auto-cargar la remisión más reciente con saldo pendiente
-  const autoRem=remisiones.find(r=>r.estado!=='pagado'&&(r.saldo||0)>0)||remisiones[0];
-  if(autoRem){remActualId=autoRem.id;renderPagos();updateObsBalance(autoRem);}
-  else renderPagos();
+  remActualId=null;
+  renderPagos();
   setTimeout(syncPrintHeader,500);
   startHeartbeat();
   _limpiarMemoriaAntigua();
@@ -1130,7 +1142,10 @@ document.addEventListener('click',e=>{
 function calcTotals(){
   let sub=0,iva=0,arts=0,pzs=0;
   items.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const i=q*p;sub+=i;iva+=i*(v/100);arts++;pzs+=q;}});
-  const dp=+document.getElementById('descPct').value||0,desc=sub*(dp/100),tot=sub+iva-desc;
+  const dp=+document.getElementById('descPct').value||0,desc=sub*(dp/100);
+  const totRaw=sub+iva-desc;
+  // Si IVA=0 → redondear a entero; si IVA>0 → mantener 2 decimales
+  const tot=iva===0?Math.round(totRaw):Math.round(totRaw*100)/100;
   document.getElementById('tSub').textContent=fmt(sub);
   document.getElementById('tIva').textContent=fmt(iva);
   document.getElementById('tDesc').textContent=fmt(desc);
@@ -1189,16 +1204,11 @@ function guardarYRegistrar(){
 }
 function autosave(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>guardarSeguro('r_draft',JSON.stringify(snap())),700)}
 function loadDraft(){
-  try{
-    const r=localStorage.getItem('r_draft');
-    if(r){
-      const d=JSON.parse(r);
-      if(d.folio&&/REM-\d{4}-\d+/.test(d.folio)) d.folio=genFolio();
-      restore(d);
-    } else {
-      const f=genFolio();document.getElementById('folioBadge').innerText=f;syncFolio(f);
-    }
-  }catch(e){}
+  // Siempre empieza limpio — los datos guardados están en Historial
+  localStorage.removeItem('r_draft');
+  const f=genFolio();
+  const fb=document.getElementById('folioBadge');
+  if(fb){fb.innerText=f;syncFolio(f);}
 }
 
 async function registrarRemision(gpsParam){
@@ -1207,7 +1217,8 @@ async function registrarRemision(gpsParam){
   if(!activos.length){toast('Agrega al menos un producto con cantidad y precio','err');return;}
   let sub=0,iva=0;
   activos.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;const i=q*p;sub+=i;iva+=i*(v/100);});
-  const tot=Math.round((sub+iva-sub*((+sn.descPct||0)/100))*100)/100;
+  const totRaw=sub+iva-sub*((+sn.descPct||0)/100);
+  const tot=iva===0?Math.round(totRaw):Math.round(totRaw*100)/100;
   // Guardar GPS en el snap si viene del botón REGISTRAR
   if(gpsParam){sn._lat=gpsParam.lat;sn._lng=gpsParam.lng;}
 
@@ -1337,8 +1348,15 @@ async function procesarColaRemisiones(){
         const d=await res.json();
         if(d&&d.ok){
           _dequeueRemision(item.id);
-          const r=remisiones.find(r=>String(r.id)===String(item.id)||r.folio===item.folio);
-          if(r){if(d.folio)_aplicarFolioDefinitivo(r,d.folio);r.sincronizado=true;persistirRemisiones();_encolarPDFsiHace(r);}
+          // Buscar por id (UUID) primero — el folio puede haber cambiado de TMP- a REM-
+          const r=remisiones.find(r=>String(r.id)===String(item.id))
+                 ||remisiones.find(r=>r.folio===item.folio);
+          if(r){
+            if(d.folio)_aplicarFolioDefinitivo(r,d.folio);
+            r.sincronizado=true;
+            persistirRemisiones();
+            _encolarPDFsiHace(r);
+          }
           ok++;
         }
       }
@@ -1490,6 +1508,7 @@ function loadRem(id){
   if(!r){toast('No se encontró la remisión en este dispositivo','err');return;}
   if(!r.data){toast('Esta remisión no tiene detalle local para reabrir','warn');return;}
   restore(r.data);renderTable();calcTotals();closeOv('ovHist');remActualId=r.id;
+  _ocultarAdeudo();
   renderPagos();updateObsBalance(r);_desbloquearPDF(true);toast('Remisión '+r.folio+' cargada','ok');
 }
 // ── Modificar remisión existente ──────────────────────────────
@@ -1508,21 +1527,35 @@ function modificarRem(id){
 }
 
 function delRem(id){
-  if(!confirm('¿Eliminar esta remisión?'))return;
+  // Sin confirm() — Chrome puede bloquearlo; usar lógica directa
   remisiones=remisiones.filter(r=>String(r.id)!==String(id));
   if(String(remActualId)===String(id)){remActualId=null;renderPagos();}
-  persistirRemisiones();renderRems(remisiones.slice(0,15));toast('Eliminada');
+  persistirRemisiones();renderRems(remisiones.slice(0,15));toast('Remisión eliminada','ok');
 }
 function nuevaRem(){
-  if(!confirm('¿Nueva remisión? Se perderán los datos no guardados.'))return;
-  items=[];['c_nombre','c_dir','c_cp','c_tel','obs'].forEach(f=>{const el=document.getElementById(f);if(el)el.value=''});
-  document.getElementById('d_asesor').selectedIndex=0;
-  document.getElementById('d_pago').selectedIndex=0;
-  document.getElementById('descPct').value='0';
-  remActualId=null;
+  // Sin confirm() — Chrome puede bloquearlo y dejar la app sin funcionar
+  _limpiarFormulario();
+  toast('Nueva remisión ✓','ok');
+}
+function _limpiarFormulario(){
+  items=[];
+  ['c_nombre','c_dir','c_cp','c_tel','obs'].forEach(f=>{const el=document.getElementById(f);if(el)el.value='';});
+  const da=document.getElementById('d_asesor');if(da)da.selectedIndex=0;
+  const dp2=document.getElementById('d_pago');if(dp2)dp2.selectedIndex=0;
+  const dc=document.getElementById('descPct');if(dc)dc.value='0';
+  remActualId=null;_pagoPreparado=null;
+  borrarFirma();
+  _ocultarAdeudo();
+  _desbloquearPDF(false);
   renderPagos();
-  const f=genFolio();document.getElementById('folioBadge').innerText=f;syncFolio(f);
-  localStorage.removeItem('r_draft');addRow();calcTotals();toast('Nueva remisión lista ✓','ok');
+  // Mostrar folio local inmediatamente, luego confirmar con servidor
+  const nLocal=parseInt(localStorage.getItem('r_fn')||'0')+1;
+  const folioLocal='REM-'+String(nLocal).padStart(4,'0');
+  const fb=document.getElementById('folioBadge');
+  if(fb){fb.innerText=folioLocal;syncFolio(folioLocal);}
+  cargarFolioRemoto(); // actualiza con el valor real del servidor
+  localStorage.removeItem('r_draft');
+  addRow();calcTotals();
 }
 
 function applyLogoH(h){
@@ -2280,7 +2313,7 @@ function registrarPago(){
   if(!r||r.estado==='pagado'){toast('Ya está marcada como pagada','err');return;}
   const monto=Math.round(parseFloat(document.getElementById('montoAbono').value||0)*100)/100;
   if(monto<=0){toast('Ingresa un monto válido','err');return;}
-  if(monto>r.saldo+0.01){toast('El monto supera el saldo','err');return;}
+  if(monto>r.saldo){toast('El monto supera el saldo','err');return;}
   const fecha=new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
   const uuid=uuidPago();
   const sd2=Math.round((r.saldo-monto)*100)/100;
@@ -2329,7 +2362,7 @@ async function registrarPagoConGuardar(tipo){
   if(!remActualId){toast('No se pudo guardar la remisión','err');return;}
   const r=remisiones.find(x=>x.id===remActualId);
   if(!r||r.estado==='pagado'){toast('Ya está marcada como pagada','err');return;}
-  if(monto>r.saldo+0.01){toast('El monto supera el saldo ('+fmt(r.saldo)+')','err');return;}
+  if(monto>r.saldo){toast('El monto supera el saldo ('+fmt(r.saldo)+')','err');return;}
 
   const fecha=new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
   const uuid=uuidPago();
@@ -2362,7 +2395,8 @@ function _calcTotalFormulario(){
   let sub=0,iva=0;
   items.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const i=q*p;sub+=i;iva+=i*(v/100);}});
   const dp=+document.getElementById('descPct').value||0;
-  return Math.round((sub+iva-sub*(dp/100))*100)/100;
+  const raw=sub+iva-sub*(dp/100);
+  return iva===0?Math.round(raw):Math.round(raw*100)/100;
 }
 
 // ── PDF bloqueado/desbloqueado ────────────────────────────────
@@ -2436,19 +2470,16 @@ async function registrarTodo(){
     // 3) Desbloquear PDF
     _desbloquearPDF(true);
 
-    // 4) Generar y subir PDF a Drive automáticamente
-    // El vendedor no tiene que hacer nada — si no hay internet queda en cola y se sube al conectar.
+    // 4) Mostrar pantalla de confirmación (adeudo / pagado)
     const remActiva=remisiones.find(r=>String(r.id)===String(remActualId));
+    if(remActiva) _mostrarConfirmacion(remActiva);
+
+    // 5) Generar y subir PDF a Drive automáticamente (silencioso)
     if(remActiva){
-      toast('Registrado ✓ — generando PDF…','ok',2000);
-      // Pequeño delay para que el DOM y jsPDF estén listos
       setTimeout(()=>{
-        try{
-          descargarPDF(remActiva); // _regen=true → solo sube a Drive, no descarga al celular
-        }catch(e){ console.warn('auto-PDF',e); }
-      },400);
-    } else {
-      toast('Remisión registrada ✓','ok',3000);
+        try{ descargarPDF(remActiva); }
+        catch(e){ console.warn('auto-PDF',e); }
+      },600);
     }
 
   }finally{
@@ -2730,6 +2761,65 @@ function closeOv(id){document.getElementById(id).classList.remove('open')}
 let _firmaData=null; // base64 PNG de la firma actual
 let _firmaDrawing=false;
 
+// ── Detección de adeudo anterior del cliente ─────────────────
+let _adeudoTimer=null;
+function _verificarAdeudo(nombre){
+  clearTimeout(_adeudoTimer);
+  if(!nombre||nombre.length<3){_ocultarAdeudo();return;}
+  _adeudoTimer=setTimeout(()=>{
+    const n=nombre.trim().toLowerCase();
+    // Buscar remisiones de este cliente con saldo pendiente (excluyendo la actual)
+    const adeudos=remisiones.filter(r=>
+      String(r.id)!==String(remActualId)&&
+      (r.cliente||'').toLowerCase().includes(n)&&
+      r.estado!=='pagado'&&r.estado!=='cancelada'&&
+      (r.saldo||0)>0
+    );
+    if(!adeudos.length){_ocultarAdeudo();return;}
+    const totalAdeudo=adeudos.reduce((a,r)=>a+(r.saldo||0),0);
+    const box=document.getElementById('adeudoBox');
+    if(!box)return;
+    box.style.display='block';
+    box.innerHTML='⚠️ <strong>Adeudo anterior:</strong> '+fmt(totalAdeudo)+' MXN en '+adeudos.length+' remisión(es)<br>'+
+      adeudos.map(r=>`<span style="font-size:11px;color:#92400e">${r.folio} · ${r.fecha} · Saldo: ${fmt(r.saldo)}</span>`).join('<br>')+
+      '<div style="margin-top:8px;display:flex;gap:8px">'+
+      '<button class="btn" style="font-size:11px;padding:4px 10px;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:6px" onclick="verHist()">📋 Ver en historial</button>'+
+      '</div>';
+  },400);
+}
+function _ocultarAdeudo(){
+  const box=document.getElementById('adeudoBox');
+  if(box)box.style.display='none';
+}
+
+// ── Pantalla de confirmación tras REGISTRAR ──────────────────
+function _mostrarConfirmacion(rem){
+  const pagado=rem.estado==='pagado';
+  const ico=document.getElementById('confRegIcon');
+  const tit=document.getElementById('confRegTitulo');
+  const det=document.getElementById('confRegDetalle');
+  if(pagado){
+    if(ico)ico.textContent='✅';
+    if(tit){tit.textContent='¡PAGADO!';tit.style.color='#1C6E4A';}
+    if(det)det.textContent='Remisión '+rem.folio+' — pagada completa.\n'+fmt(rem.total)+' MXN';
+  } else {
+    if(ico)ico.textContent='⚠️';
+    if(tit){tit.textContent='Adeudo pendiente';tit.style.color='#b45309';}
+    if(det)det.innerHTML='Remisión <strong>'+rem.folio+'</strong><br>'+
+      'Total: '+fmt(rem.total)+' MXN<br>'+
+      'Saldo pendiente: <strong style="color:#c0392b">'+fmt(rem.saldo)+' MXN</strong>';
+  }
+  document.getElementById('ovConfirmReg').classList.add('open');
+}
+
+function toggleFirma(){
+  const sec=document.getElementById('firmaSection');
+  const ico=document.getElementById('firmaToggleIcon');
+  if(!sec)return;
+  const visible=sec.style.display!=='none';
+  sec.style.display=visible?'none':'flex';
+  if(ico)ico.textContent=visible?'▼':'▲';
+}
 function abrirFirma(){
   document.getElementById('ovFirma').classList.add('open');
   const canvas=document.getElementById('firmaCanvas');
