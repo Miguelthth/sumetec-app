@@ -1150,7 +1150,7 @@ async function registrarRemision(){
       if(!d||!d.folio) throw new Error('sin folio');
       folio=d.folio;
       // Sincronizar contador local
-      try{const m=folio.match(/(\d+)$/);if(m)localStorage.setItem('r_fn',String(parseInt(m[1])-1));}catch(_){}
+      try{const m=folio.match(/(\d+)$/);if(m)localStorage.setItem('r_fn',String(parseInt(m[1])));}catch(_){}
     }catch(e){
       // CRÍTICO: la señal estaba "en línea" pero falló (datos intermitentes en campo).
       // NUNCA tirar la remisión — caemos al flujo offline con folio temporal y se
@@ -1213,12 +1213,11 @@ function _aplicarFolioDefinitivo(rem,nuevoFolio){
     const fEl=document.getElementById('folioBadge');
     if(fEl){fEl.innerText=nuevoFolio;syncFolio(nuevoFolio);}
   }
-  // Regenerar el PDF con el folio definitivo y re-subirlo a Drive (si hay datos locales).
-  let regenerado=false;
-  try{
-    if(rem.data&&window.jspdf&&isOnline){ descargarPDF(rem); regenerado=true; }
-  }catch(e){ console.warn('regenerar PDF',e); }
-  toast('Folio definitivo asignado: '+nuevoFolio+' (era '+viejo+').'+(regenerado?' PDF actualizado en Drive ✓':' Si ya entregaste el PDF, reimprímelo.'),'ok',6000);
+  // El folio ya fue actualizado en la cola de PDFs por _encolarPDFsiHace.
+  // procesarColaPDF se encargará de subir con el folio definitivo — no duplicar aquí.
+  _encolarPDFsiHace(rem);
+  persistirRemisiones();
+  toast('Folio definitivo asignado: '+nuevoFolio+' (era '+viejo+'). PDF se subirá con el folio correcto.','ok',6000);
   return true;
 }
 
