@@ -501,9 +501,16 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 <div id="pagosSection" class="no-print" style="margin-top:16px;background:var(--white);border-radius:var(--r);box-shadow:var(--sh2);overflow:hidden">
   <div style="background:var(--navy);padding:12px 28px;color:#fff;display:flex;align-items:center;gap:10px">
     <span id="cobroTitle" style="font-weight:700;font-size:13px;letter-spacing:.5px">💰 COBRO</span>
-    <div style="margin-left:auto;text-align:right;line-height:1.2">
-      <div style="font-size:10px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.8px">Saldo pendiente</div>
-      <div id="saldoDisplay" style="font-size:22px;font-weight:800;color:#4CAF82">$0.00</div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:12px">
+      <!-- Botón grande y visible para poner el total completo en el campo de abono -->
+      <button id="btnPagarTotal" onclick="setAtajoMonto(1)"
+        style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.35);color:#fff;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">
+        ↓ Poner total
+      </button>
+      <div style="text-align:right;line-height:1.2">
+        <div style="font-size:10px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.8px">Saldo pendiente</div>
+        <div id="saldoDisplay" style="font-size:22px;font-weight:800;color:#4CAF82">$0.00</div>
+      </div>
     </div>
   </div>
   <div id="pagosHistorial" style="display:none"></div>
@@ -2704,11 +2711,12 @@ function renderPagos(){
     if(title)title.textContent='💰 COBRO';
     const pl=document.getElementById('pagosListaCompacta');
     if(pl)pl.innerHTML="<div style='font-size:12px;color:var(--muted);font-style:italic'>Sin pagos aún</div>";
-    // Mostrar el total actual del formulario como saldo estimado
     const totalActual=_calcTotalFormulario();
     const sd=document.getElementById('saldoDisplay');
     if(sd)sd.textContent=totalActual>0?fmt(totalActual)+' MXN':'$—';
     const ch=document.getElementById('checkPagado');if(ch){ch.checked=false;ch.disabled=false;}
+    // Asegurarse que pagosControles y abonoArea sean visibles siempre
+    const ctrl=document.getElementById('pagosControles');if(ctrl)ctrl.style.display='block';
     const aa=document.getElementById('abonoArea');if(aa)aa.style.display='block';
     const btnR=document.getElementById('btnPagoRapido');if(btnR)btnR.style.display='none';
     const wa=document.getElementById('waBtnOffline');if(wa)wa.style.display='none';
