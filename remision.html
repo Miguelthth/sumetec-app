@@ -542,6 +542,43 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   </div>
 </div></div>
 
+<!-- Modal pago rápido desde Cobros -->
+<div class="ov" id="ovPagoRapido" style="z-index:960">
+  <div style="background:#fff;border-radius:16px;padding:24px;max-width:380px;width:calc(100% - 32px)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <div style="font-weight:800;font-size:16px;color:var(--navy)" id="prFolio">REM-0001</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px" id="prCliente">—</div>
+      </div>
+      <button style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)" onclick="closeOv('ovPagoRapido')">✕</button>
+    </div>
+    <div style="background:var(--bg);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Saldo pendiente</span>
+      <span style="font-size:22px;font-weight:800;color:#c0392b" id="prSaldo">$0.00</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input id="prMonto" type="number" inputmode="decimal" min="0.01" step="0.01"
+        placeholder="$ Monto a pagar"
+        style="flex:1;border:2px solid var(--border);border-radius:10px;padding:12px;font-size:15px;font-family:inherit;outline:none"
+        onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='var(--border)'">
+      <button onclick="prPonertotal()"
+        style="background:var(--navy);color:#fff;border:none;border-radius:10px;padding:12px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit">
+        ↓ Total
+      </button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <button onclick="closeOv('ovPagoRapido')"
+        style="padding:14px;border:2px solid var(--border);background:#fff;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--muted)">
+        Cancelar
+      </button>
+      <button id="btnConfirmarPagoRapido" onclick="confirmarPagoRapido()"
+        style="padding:14px;background:var(--green);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">
+        ✅ Registrar pago
+      </button>
+    </div>
+  </div>
+</div>
+
 <div class="ov" id="ovCobros"><div class="modal" style="max-width:520px">
   <div class="modal-hd">
     <div>
@@ -1482,10 +1519,11 @@ function verCobros(){
       const tags=(c._pendiente?'<span class="estado-badge badge-sync">⏳ sin sincronizar</span>':'')+
         (c._sobrepago?'<span class="estado-badge" style="background:#fee2e2;color:#b91c1c">⚠️ sobrepago</span>':'')+
         (!c._local?'<span class="estado-badge" style="background:#e0e7ff;color:#3730a3">📱 otro dispositivo</span>':'');
-      const accion='<button class="cobro-btn">Cobrar →</button>';
-      const onclick=c._local?'onclick="loadRemCobro(\''+(c.id||c.folio)+'\')"':'onclick="cobrarRemota(\''+c.folio+'\')"';
+      const idCobro=c.id||c.folio;
+      const esLocal=!!c._local;
+      const accion=`<button class="cobro-btn" onclick="event.stopPropagation();abrirPagoRapido('${idCobro}','${c.folio}',${esLocal})">💰 Cobrar</button>`;
       return `
-      <div class="cobro-row" ${onclick}>
+      <div class="cobro-row">
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;color:var(--navy);font-size:13px">${c.folio} ${tags}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.cliente} · ${c.fecha}</div>
@@ -1496,6 +1534,122 @@ function verCobros(){
     }).join('');
   }
   document.getElementById('ovCobros').classList.add('open');
+}
+
+// ── Pago rápido desde Cobros (sin salir de la lista) ─────────
+let _prId=null,_prFolio=null,_prEsLocal=false;
+
+async function abrirPagoRapido(id, folio, esLocal){
+  _prId=id; _prFolio=folio; _prEsLocal=esLocal;
+
+  // Buscar datos: local primero, luego servidor
+  let rem=remisiones.find(r=>String(r.id)===String(id)||r.folio===folio);
+
+  // Si es del servidor y no está local, traer detalle
+  if(!rem&&isOnline){
+    try{
+      const url=getScriptUrl();
+      const ctrl=new AbortController();setTimeout(()=>ctrl.abort(),6000);
+      const r=await fetch(url+'?tipo=remision_detalle&folio='+encodeURIComponent(folio),{signal:ctrl.signal,cache:'no-store'});
+      const d=await r.json();
+      if(d&&d.ok&&d.remision){
+        rem={id:d.remision.id||id,folio:d.remision.folio||folio,
+          cliente:d.remision.cliente||'',total:+d.remision.total||0,
+          saldo:+d.remision.saldo||0,estado:d.remision.estado||'pendiente',
+          pagos:(d.pagos||[]).map(p=>({...p,_sync:true})),
+          sincronizado:true,_remota:true,
+          data:{folio:folio,c_nombre:d.remision.cliente||'',c_dir:'',c_cp:'',c_tel:'',d_asesor:'',d_pago:'',obs:'',descPct:0,items:[]}};
+        // Guardar sombra local para poder procesar el pago
+        const existeIdx=remisiones.findIndex(r=>String(r.id)===String(rem.id)||r.folio===rem.folio);
+        if(existeIdx<0){remisiones.unshift(rem);persistirRemisiones();}
+        else rem=remisiones[existeIdx];
+      }
+    }catch(e){}
+  }
+
+  if(!rem){toast('No se pudo cargar la remisión','err');return;}
+  if(rem.estado==='pagado'){toast('Ya está pagada','warn');return;}
+
+  // Llenar el modal
+  document.getElementById('prFolio').textContent=rem.folio;
+  document.getElementById('prCliente').textContent=rem.cliente||'—';
+  document.getElementById('prSaldo').textContent=fmt(rem.saldo||0)+' MXN';
+  document.getElementById('prMonto').value='';
+  document.getElementById('ovPagoRapido').classList.add('open');
+}
+
+function prPonertotal(){
+  const rem=remisiones.find(r=>String(r.id)===String(_prId)||r.folio===_prFolio);
+  if(rem)document.getElementById('prMonto').value=rem.saldo||0;
+}
+
+async function confirmarPagoRapido(){
+  const monto=Math.round(parseFloat(document.getElementById('prMonto')?.value||0)*100)/100;
+  if(monto<=0){toast('Ingresa un monto válido','err');return;}
+
+  const rem=remisiones.find(r=>String(r.id)===String(_prId)||r.folio===_prFolio);
+  if(!rem){toast('Remisión no encontrada','err');return;}
+  if(monto>rem.saldo){toast('El monto supera el saldo ('+fmt(rem.saldo)+')','err');return;}
+
+  const btn=document.getElementById('btnConfirmarPagoRapido');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Procesando…';}
+
+  try{
+    const fecha=new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const uuid=uuidPago();
+    const esPagoCompleto=monto>=rem.saldo;
+
+    if(esPagoCompleto){
+      rem.pagos=rem.pagos||[];
+      rem.pagos.push({uuid,tipo:'pago_completo',monto:rem.saldo,fecha,device:DEVICE_ID});
+      rem.saldo=0;rem.estado='pagado';
+    } else {
+      const sd2=Math.round((rem.saldo-monto)*100)/100;
+      rem.pagos=rem.pagos||[];
+      rem.pagos.push({uuid,tipo:'abono',monto,fecha,saldo_despues:sd2,device:DEVICE_ID});
+      rem.saldo=sd2;rem.estado='abono';
+    }
+
+    // Actualizar obs con balance
+    if(rem.data){
+      const lineas=esPagoCompleto?['--- PAGOS ---','PAGADO COMPLETO ✓']:['--- PAGOS ---'];
+      rem.pagos.filter(p=>p.tipo!=='anulacion').forEach(p=>{
+        if(p.tipo==='pago_completo')lineas.push('Pago completo '+fmt(p.monto)+' MXN | '+p.fecha);
+        else lineas.push('Abono '+fmt(p.monto)+' MXN | '+p.fecha+' | Resto: '+fmt(p.saldo_despues)+' MXN');
+      });
+      if(!esPagoCompleto)lineas.push('Saldo pendiente: '+fmt(rem.saldo)+' MXN');
+      rem.data.obs=(rem.data.obs||'').replace(/\n?(?:--- PAGOS ---)[\s\S]*/,'').trimEnd();
+      rem.data.obs+=(rem.data.obs?'\n\n':'')+lineas.join('\n');
+      rem.data.pagos=[...rem.pagos];
+    }
+
+    rem.sincronizado=false;
+    persistirRemisiones();
+    enviarPagoConCola(rem,rem.pagos[rem.pagos.length-1]);
+    sincronizarRemision(rem);
+
+    closeOv('ovPagoRapido');
+
+    // Mostrar resultado
+    if(esPagoCompleto){
+      toast('✅ PAGADO COMPLETO — '+fmt(monto)+' MXN','ok',4000);
+    } else {
+      toast('💛 Abono de '+fmt(monto)+' registrado. Saldo: '+fmt(rem.saldo)+' MXN','ok',4000);
+    }
+
+    // Generar PDF actualizado (sobreescribe el anterior en Drive)
+    if(rem.data&&window.jspdf&&isOnline){
+      setTimeout(()=>{try{descargarPDF(rem);}catch(e){}},600);
+    } else {
+      _encolarPDFsiHace(rem); // sin jsPDF o sin red → cola para cuando pueda
+    }
+
+    // Refrescar la lista de cobros
+    setTimeout(()=>{if(document.getElementById('ovCobros').classList.contains('open'))verCobros();},500);
+
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='✅ Registrar pago';}
+  }
 }
 
 function loadRemCobro(id){
@@ -1598,7 +1752,7 @@ function renderRems(list){
     const tieneItems=!esServidor&&r.data&&(r.data.items||[]).length>0;
     const etiqueta=esServidor?'<span style="font-size:9px;background:#e0e7ff;color:#3730a3;border-radius:4px;padding:1px 5px;font-weight:600">☁️ servidor</span>':'';
     const accionCobrar=r.estado!=='pagado'&&r.estado!=='cancelada'
-      ?`<button class="btn" style="padding:4px 8px;font-size:11px;background:#e8f5ef;color:#1C6E4A;border:1px solid #a7f3d0;border-radius:6px" onclick="event.stopPropagation();${esServidor?`cobrarRemota('${r.folio}')`:`loadRemCobro('${r.id}')`}">💰 Cobrar</button>`
+      ?`<button class="btn" style="padding:4px 8px;font-size:11px;background:#e8f5ef;color:#1C6E4A;border:1px solid #a7f3d0;border-radius:6px" onclick="event.stopPropagation();abrirPagoRapido('${r.id||r.folio}','${r.folio}',${!esServidor})">💰 Cobrar</button>`
       :'';
     const accionModificar=tieneItems&&r.estado!=='cancelada'&&r.estado!=='pagado'
       ?`<button class="btn" style="padding:4px 8px;font-size:11px;background:#e0f0ff;color:#1a56a0;border:1px solid #bfdbfe;border-radius:6px" onclick="event.stopPropagation();modificarRem('${r.id}')">✏️</button>`
