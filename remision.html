@@ -1197,6 +1197,11 @@ function calcTotals(){
   document.getElementById('rArts').textContent=arts;
   document.getElementById('rPzs').textContent=pzs;
   document.getElementById('tWords').textContent='('+n2l(tot)+')';
+  // Actualizar saldo del panel de cobro en tiempo real si no hay remisión activa
+  if(!remActualId){
+    const sd=document.getElementById('saldoDisplay');
+    if(sd)sd.textContent=tot>0?fmt(tot)+' MXN':'$—';
+  }
   autosave();
 }
 function fmt(n){return'$'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',')}
@@ -1287,7 +1292,7 @@ async function registrarRemision(gpsParam){
     try{
       toast('Obteniendo folio…','loading',0);
       const ctrl=new AbortController();
-      const t=setTimeout(()=>ctrl.abort(),8000);
+      const t=setTimeout(()=>ctrl.abort(),5000); // max 5s, si tarda más → offline
       const r=await fetch(url+'?tipo=reservar_folio',{signal:ctrl.signal,cache:'no-store'});
       clearTimeout(t);
       const d=await r.json();
@@ -2376,9 +2381,11 @@ function uuidPago(){return 'pago_'+Date.now().toString(36)+'_'+Math.random().toS
 function uuidRemision(){return 'rem_'+Date.now().toString(36)+'_'+Math.random().toString(36).substr(2,9);}
 
 function setAtajoMonto(pct){
-  const r=remisiones.find(x=>x.id===remActualId);
-  if(!r)return;
-  document.getElementById('montoAbono').value=Math.round(r.saldo*pct*100)/100;
+  // Si hay remisión activa usar su saldo, si no usar el total del formulario actual
+  const r=remActualId?remisiones.find(x=>x.id===remActualId):null;
+  const base=r?r.saldo:_calcTotalFormulario();
+  if(base<=0)return;
+  document.getElementById('montoAbono').value=Math.round(base*pct*100)/100;
 }
 
 function onCheckPagado(checked){
@@ -2537,12 +2544,17 @@ async function registrarTodo(){
   const btn=document.getElementById('btnRegistrar');
   if(btn){btn.disabled=true;btn.innerHTML='⏳ Registrando…';}
 
-  // Obtener GPS justo aquí (acción directa del usuario → iOS lo permite)
-  const gps=await _obtenerGPS();
-
   try{
+    // GPS con timeout corto (3s) — en paralelo con el resto, no bloquea
+    const gps=await Promise.race([
+      _obtenerGPS(),
+      new Promise(r=>setTimeout(()=>r(null),3000))
+    ]);
+
     // 1) Guardar/actualizar remisión
     await registrarRemision(gps);
+    // Limpiar toast "Obteniendo folio…" de inmediato — no esperar al Drive
+    toast('','',1);
 
     // 2) Aplicar pago si hay monto en el campo
     const montoInput=Math.round(parseFloat(document.getElementById('montoAbono')?.value||0)*100)/100;
@@ -2560,7 +2572,7 @@ async function registrarTodo(){
           const wm=document.getElementById('wmPagado');
           if(wm){wm.style.display='flex';wm.style.animation='wm-aparecer .4s ease';}
         } else {
-          const sd2=iva===0?Math.round((r.saldo-montoInput)*100)/100:Math.round((r.saldo-montoInput)*100)/100;
+          const sd2=ivaGlobal===0?Math.round(r.saldo-montoInput):Math.round((r.saldo-montoInput)*100)/100;
           r.pagos=r.pagos||[];
           r.pagos.push({uuid,tipo:'abono',monto:montoInput,fecha,saldo_despues:sd2,device:DEVICE_ID});
           r.saldo=sd2;r.estado='abono';
@@ -2578,11 +2590,12 @@ async function registrarTodo(){
       }
     }
 
-    // 3) Desbloquear PDF
+    // 3) Actualizar obs con el saldo (aunque no haya pago) y desbloquear PDF
     _desbloquearPDF(true);
+    const remActiva=remisiones.find(r=>String(r.id)===String(remActualId));
+    if(remActiva){ updateObsBalance(remActiva); } // saldo siempre visible en obs
 
     // 4) Mostrar pantalla de confirmación (adeudo / pagado)
-    const remActiva=remisiones.find(r=>String(r.id)===String(remActualId));
     if(remActiva) _mostrarConfirmacion(remActiva);
 
     // 5) Generar y subir PDF a Drive automáticamente (silencioso)
@@ -2593,8 +2606,14 @@ async function registrarTodo(){
       },600);
     }
 
+  }catch(err){
+    toast('Error al registrar: '+err.message,'err',4000);
+    console.error('registrarTodo',err);
   }finally{
     if(btn){btn.disabled=false;btn.innerHTML='✅ REGISTRAR';}
+    // Siempre limpiar cualquier toast de loading que quedara pegado
+    const t=document.getElementById('toast');
+    if(t&&(t.classList.contains('loading')))t.classList.remove('show');
   }
 }
 
@@ -2665,11 +2684,14 @@ function updateObsBalance(r){
     lineas.push('[Anulado] '+fmt(p.monto_ref||0)+' MXN ('+p.razon+') | '+p.fecha);
   });
   if(r.estado==='pagado'){
-    lineas.push('PAGADO COMPLETO');
-  } else if(pagosValidos.length||anulaciones.length){
+    lineas.push('PAGADO COMPLETO ✓');
+  } else if((r.saldo||0)>0){
+    // Siempre mostrar saldo pendiente, aunque no haya pagos aún
     lineas.push('Saldo pendiente: '+fmt(r.saldo)+' MXN');
   }
-  ta.value=txt+(txt?'\n\n':'')+lineas.join('\n');
+  // Si el bloque solo tiene el encabezado y el saldo (sin pagos), simplificarlo
+  const soloSaldo=lineas.length===2&&!pagosValidos.length&&!anulaciones.length;
+  ta.value=txt+(txt?'\n\n':'')+(soloSaldo?'Saldo: '+fmt(r.saldo)+' MXN':lineas.join('\n'));
   _syncData(); // sincronizar rem.data.obs
   autosave();
 }
