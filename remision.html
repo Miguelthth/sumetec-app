@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -528,7 +528,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 </div>
 </div>
 
-<div class="ov" id="ovHist"><div class="modal"><div class="modal-hd"><div class="modal-title">📋 Historial de Remisiones</div><button class="mx" onclick="closeOv('ovHist')">✕</button></div><input class="mi" type="text" placeholder="Buscar por folio o cliente…" oninput="filtRems(this.value)"><div class="ml" id="remList"></div></div></div>
+<div class="ov" id="ovHist"><div class="modal"><div class="modal-hd"><div class="modal-title">📋 Historial de Remisiones</div><button class="mx" onclick="closeOv('ovHist')">✕</button></div><input class="mi" type="text" id="histBusqInput" placeholder="Buscar por folio o cliente…" oninput="filtRems(this.value)"><div id="histFiltroCliente" style="display:none;background:var(--green-light);border-radius:8px;padding:7px 12px;margin-bottom:8px;align-items:center;justify-content:space-between;gap:8px"><div style="font-size:12.5px;font-weight:700;color:var(--green)" id="histFiltroNombre"></div><div style="font-size:12px;font-weight:700;color:var(--green)" id="histFiltroTotal"></div><button onclick="limpiarFiltroCliente()" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:15px;font-weight:700;line-height:1">✕</button></div><div class="ml" id="remList"></div></div></div>
 
 <div class="ov" id="ovCancelar"><div class="modal" style="max-width:420px">
   <div class="modal-hd"><div class="modal-title" style="color:#c0392b">🚫 Cancelar Remisión</div><button class="mx" onclick="closeOv('ovCancelar')">✕</button></div>
@@ -569,13 +569,17 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <button onclick="closeOv('ovPagoRapido')"
         style="padding:14px;border:2px solid var(--border);background:#fff;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--muted)">
-        Cancelar
+        Cerrar
       </button>
       <button id="btnConfirmarPagoRapido" onclick="confirmarPagoRapido()"
         style="padding:14px;background:var(--green);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">
         ✅ Registrar pago
       </button>
     </div>
+    <button id="btnVerRemisionPago" onclick="verRemisionDesdePago()"
+      style="display:none;margin-top:10px;width:100%;padding:13px;background:var(--green-light);color:var(--green);border:2px solid #a7f3d0;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+      📋 Abrir remisión → descargar / enviar PDF al cliente
+    </button>
   </div>
 </div>
 
@@ -585,9 +589,24 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <div class="modal-title">💰 Cobros Pendientes</div>
       <div id="cobrosSubtitle" style="font-size:11px;color:var(--muted);margin-top:2px"></div>
     </div>
-    <button class="mx" onclick="closeOv('ovCobros')">✕</button>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button onclick="verResumenDia()" class="btn" style="padding:5px 10px;font-size:11.5px;background:var(--bg);color:var(--navy);border:1px solid var(--border);border-radius:8px">📊 Resumen</button>
+      <button class="mx" onclick="closeOv('ovCobros')">✕</button>
+    </div>
   </div>
   <div id="cobrosList"></div>
+</div></div>
+
+<div class="ov" id="ovResumen"><div class="modal" style="max-width:520px">
+  <div class="modal-hd">
+    <div><div class="modal-title">📊 Resumen del Día</div><div id="resumenFecha" style="font-size:11px;color:var(--muted);margin-top:2px"></div></div>
+    <button class="mx" onclick="closeOv('ovResumen')">✕</button>
+  </div>
+  <div id="resumenBody" style="max-height:60vh;overflow-y:auto"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px">
+    <button onclick="closeOv('ovResumen')" style="padding:11px;border:2px solid var(--border);background:#fff;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--muted)">Cerrar</button>
+    <button onclick="compartirResumen()" style="padding:11px;background:#25D366;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📱 WhatsApp</button>
+  </div>
 </div></div>
 
 <div class="ov" id="ovEmpresa"><div class="modal"><div class="modal-hd"><div class="modal-title">🏢 Datos de Mi Empresa</div><button class="mx" onclick="closeOv('ovEmpresa')">✕</button></div>
@@ -621,8 +640,26 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <div class="fg"><label>☁️ URL del Apps Script — Drive &amp; Folios</label><input id="drive_url" type="text" placeholder="https://script.google.com/macros/s/.../exec" oninput="guardarDriveUrl()"><div style="font-size:11px;color:var(--muted);margin-top:3px">Guarda PDFs en Drive y sincroniza el contador de folios</div></div>
     <div id="driveStatus" style="font-size:12px;color:var(--muted);min-height:16px"></div>
   </div>
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+    <div class="fg"><label>🔑 Token de seguridad</label><input id="api_token_input" type="text" placeholder="Ej: MiTokenSecreto2026" oninput="guardarApiToken()"><div style="font-size:11px;color:var(--muted);margin-top:3px">Debe coincidir con <code>API_TOKEN</code> en tu <code>apps_script.js</code>. Nunca lo pongas en el código fuente.</div></div>
+    <div id="tokenStatus" style="font-size:12px;min-height:16px"></div>
+  </div>
 </div></div>
 
+
+<div class="ov" id="ovAdeudo" style="z-index:950"><div class="modal" style="max-width:420px">
+  <div style="text-align:center;padding:6px 0 14px">
+    <div style="font-size:34px;margin-bottom:6px">⚠️</div>
+    <div style="font-size:15px;font-weight:800;color:var(--navy)">Adeudo pendiente</div>
+    <div id="adeudoClienteNombre" style="font-size:13px;color:var(--muted);margin-top:3px"></div>
+  </div>
+  <div id="adeudoDetalle" style="background:#fff5f5;border-radius:10px;padding:12px;margin-bottom:12px;max-height:40vh;overflow-y:auto"></div>
+  <div id="adeudoTotalBig" style="text-align:center;font-size:26px;font-weight:900;color:#c0392b;margin-bottom:16px"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <button onclick="closeOv('ovAdeudo')" style="padding:12px;border:2px solid var(--border);background:#fff;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--muted)">Continuar de todos modos</button>
+    <button onclick="_irACobrarAdeudo()" style="padding:12px;background:#c0392b;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💰 Ir a cobrar</button>
+  </div>
+</div></div>
 
 <div class="ov" id="ovNuevoCliente"><div class="modal" style="max-width:480px">
   <div class="modal-hd"><div class="modal-title">👤 Agregar Nuevo Cliente</div><button class="mx" onclick="closeOv('ovNuevoCliente')">✕</button></div>
@@ -631,6 +668,9 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   <div class="fg"><label>Dirección</label><input id="nc_dir" type="text" placeholder="Calle, Ciudad"></div>
   <div class="fg"><label>C.P.</label><input id="nc_cp" type="text" placeholder="45000"></div>
   <div class="fg"><label>Teléfono</label><input id="nc_tel" type="text" placeholder="33 0000 0000"></div>
+  <div class="fg"><label>RFC</label><input id="nc_rfc" type="text" placeholder="ABC010101AAA"></div>
+  <div class="fg"><label>Correo</label><input id="nc_email" type="email" placeholder="compras@empresa.com"></div>
+  <div class="fg"><label>Contacto</label><input id="nc_contacto" type="text" placeholder="Nombre de la persona de contacto"></div>
 
   <div style="display:flex;gap:9px;margin-top:4px">
     <button class="btn btn-p" style="flex:1;justify-content:center;padding:11px" onclick="guardarNuevoCliente(false)">💾 Guardar en catálogo</button>
@@ -799,7 +839,8 @@ const DEVICE_ID=getDeviceId();
 function setOnlineState(online){
   const wasOffline=!isOnline;
   isOnline=online;
-  if(online&&wasOffline){setTimeout(procesarCola,800);setTimeout(procesarColaRemisiones,1200);setTimeout(procesarColaPDF,1800);setTimeout(bajarCobros,2200);}
+  // Remisiones PRIMERO (asignan folio REM- definitivo), luego pagos (ya con folio correcto), luego PDFs.
+  if(online&&wasOffline){setTimeout(procesarColaRemisiones,800);setTimeout(procesarCola,1400);setTimeout(procesarColaPDF,2000);setTimeout(bajarCobros,2400);}
   actualizarPanelConexion();
 }
 
@@ -840,7 +881,7 @@ async function heartbeat(){
 }
 
 function startHeartbeat(){heartbeat();_hbTimer=setInterval(heartbeat,30000);}
-window.addEventListener('online',()=>{heartbeat();setTimeout(procesarCola,1500);setTimeout(procesarColaRemisiones,2000);setTimeout(procesarColaPDF,2600);});
+window.addEventListener('online',()=>{heartbeat();setTimeout(procesarColaRemisiones,1500);setTimeout(procesarCola,2100);setTimeout(procesarColaPDF,2700);});
 window.addEventListener('offline',()=>setOnlineState(false));
 
 // ── Cobros compartidos: caché desde Sheets (fuente única para ambos celulares) ──
@@ -912,6 +953,26 @@ const EMPRESA_DEFAULT={                                                         
 const URL_CATALOGOS='https://script.google.com/macros/s/AKfycbybfhE5EGjP93myfFv-DcE22CPAt-cjbXVijcmWW0RGQ5cJn5DX9JrGOHLtEYGCor-l/exec';
 const URL_DRIVE='https://script.google.com/macros/s/AKfycbybfhE5EGjP93myfFv-DcE22CPAt-cjbXVijcmWW0RGQ5cJn5DX9JrGOHLtEYGCor-l/exec';
 // ─────────────────────────────────────────────────────────────────────────────
+// Token de seguridad — leído de localStorage para no quedar en código fuente
+// Configurar en ⚙️ Catálogos → Token de seguridad
+let API_TOKEN=(localStorage.getItem('api_token')||'').trim();
+(function(){
+  const _f=window.fetch.bind(window);
+  window.fetch=function(input,init){
+    // Normaliza string o URL object a texto para detectar destino
+    const url = (typeof input==='string') ? input : (input&&input.href) ? input.href : '';
+    if(url.includes('script.google.com')){
+      if(!url.includes('token=')){
+        const nuevaUrl = url+(url.includes('?')?'&':'?')+'token='+encodeURIComponent(API_TOKEN);
+        input = (typeof input==='string') ? nuevaUrl : nuevaUrl; // reasigna como string
+      }
+      if(init&&typeof init.body==='string'){
+        try{const b=JSON.parse(init.body); if(b.token===undefined){b.token=API_TOKEN; init={...init,body:JSON.stringify(b)};}}catch(_){}
+      }
+    }
+    return _f(input,init);
+  };
+})();
 
 let empresa={...EMPRESA_DEFAULT};
 
@@ -941,9 +1002,12 @@ document.addEventListener('DOMContentLoaded',()=>{
   startHeartbeat();
   _limpiarMemoriaAntigua();
   reconciliarPendientes();
-  procesarCola();
+  // Avisar si el token no está configurado
+  setTimeout(()=>{if(!API_TOKEN)toast('⚠️ Sin token — abre ⚙️ Catálogos → Token de seguridad antes de operar','warn',12000);},1500);
+  // Remisiones primero (folio definitivo), después pagos, después PDFs.
   procesarColaRemisiones();
-  procesarColaPDF();
+  setTimeout(procesarCola,1200);
+  setTimeout(procesarColaPDF,2000);
   bajarCobros();
   actualizarBadgePendientes();
   actualizarPanelConexion();
@@ -1219,7 +1283,7 @@ function renderCList(list){
 }
 function selCliente(idx){
   const c=CLIENTES[idx];if(!c)return;
-  ['nombre','dir','cp','tel'].forEach(f=>{const el=document.getElementById('c_'+f);if(el)el.value=c[f]||''});
+  ['nombre','dir','cp','tel','rfc','email','contacto'].forEach(f=>{const el=document.getElementById('c_'+f);if(el)el.value=c[f]||''});
   document.getElementById('cPanel').classList.remove('open');cPanelOpen=false;autosave();
 }
 document.addEventListener('click',e=>{
@@ -1227,13 +1291,17 @@ document.addEventListener('click',e=>{
   if(cPanelOpen&&!p.contains(e.target)&&!e.target.closest('.sbtn')){p.classList.remove('open');cPanelOpen=false;}
 });
 
-function calcTotals(){
+// Fuente única de verdad para el cálculo financiero.
+// Devuelve {sub, iva, desc, tot, arts, pzs} con el mismo redondeo en todos los contextos.
+function _calcTot(arr,descPct){
   let sub=0,iva=0,arts=0,pzs=0;
-  items.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const i=q*p;sub+=i;iva+=i*(v/100);arts++;pzs+=q;}});
-  const dp=+document.getElementById('descPct').value||0,desc=sub*(dp/100);
-  const totRaw=sub+iva-desc;
-  // Si IVA=0 → redondear a entero; si IVA>0 → mantener 2 decimales
-  const tot=iva===0?Math.round(totRaw):Math.round(totRaw*100)/100;
+  arr.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const i=q*p;sub+=i;iva+=i*(v/100);arts++;pzs+=q;}});
+  const desc=sub*((+descPct||0)/100),totRaw=sub+iva-desc;
+  return{sub,iva,desc,tot:iva===0?Math.round(totRaw):Math.round(totRaw*100)/100,arts,pzs};
+}
+function calcTotals(){
+  const dp=+document.getElementById('descPct').value||0;
+  const{sub,iva,desc,tot,arts,pzs}=_calcTot(items,dp);
   document.getElementById('tSub').textContent=fmt(sub);
   document.getElementById('tIva').textContent=fmt(iva);
   document.getElementById('tDesc').textContent=fmt(desc);
@@ -1308,10 +1376,7 @@ async function registrarRemision(gpsParam){
   const sn=snap();
   const activos=sn.items.filter(i=>(+i.qty>0)&&(+i.precio>0));
   if(!activos.length){toast('Agrega al menos un producto con cantidad y precio','err');return;}
-  let sub=0,iva=0;
-  activos.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;const i=q*p;sub+=i;iva+=i*(v/100);});
-  const totRaw=sub+iva-sub*((+sn.descPct||0)/100);
-  const tot=iva===0?Math.round(totRaw):Math.round(totRaw*100)/100;
+  const{tot}=_calcTot(activos,sn.descPct);
   // Guardar GPS en el snap si viene del botón REGISTRAR
   if(gpsParam){sn._lat=gpsParam.lat;sn._lng=gpsParam.lng;}
 
@@ -1405,6 +1470,17 @@ function _aplicarFolioDefinitivo(rem,nuevoFolio){
     const fEl=document.getElementById('folioBadge');
     if(fEl){fEl.innerText=nuevoFolio;syncFolio(nuevoFolio);}
   }
+  // Fix #4: re-sellar el folio de los pagos ya encolados (cola_offline) que apuntaban al TMP-.
+  // Sin esto, el abono cobrado offline se guarda en la hoja Pagos bajo el folio temporal
+  // y recalcularSaldo(REM-) no lo suma → el pago del cliente desaparece del saldo.
+  try{
+    const colaP=leerSeguro('cola_offline',[]);
+    let cambioP=false;
+    colaP.forEach(p=>{ if(p.folio===viejo){ p.folio=nuevoFolio; cambioP=true; } });
+    if(cambioP) guardarSeguro('cola_offline',JSON.stringify(colaP));
+  }catch(_){}
+  // Re-sellar también los pagos en memoria de la remisión (por si se reenvían)
+  if(Array.isArray(rem.pagos)) rem.pagos.forEach(p=>{ if(p._folio===viejo)p._folio=nuevoFolio; });
   // El folio ya fue actualizado en la cola de PDFs por _encolarPDFsiHace.
   // procesarColaPDF se encargará de subir con el folio definitivo — no duplicar aquí.
   _encolarPDFsiHace(rem);
@@ -1496,7 +1572,46 @@ function _cobrosCombinados(){
   }
   return [...byKey.values()]
     .filter(c=>c.estado!=='pagado'&&(c.saldo>0||c._sobrepago))
-    .sort((a,b)=>String(a.folio).localeCompare(String(b.folio),'es',{numeric:true}));
+    .sort((a,b)=>String(b.folio).localeCompare(String(a.folio),'es',{numeric:true})); // más reciente primero
+}
+
+let _resumenWAText='';
+function verResumenDia(){
+  closeOv('ovCobros');
+  const hoy=new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const todas=[...remisiones,..._histServidor.filter(s=>!remisiones.find(r=>r.folio===s.folio))];
+  const deHoy=todas.filter(r=>r.fecha===hoy);
+  const cobradas=deHoy.filter(r=>r.estado==='pagado'||(r.estado==='abono'&&(r.pagos||[]).length>0));
+  const pendientes=deHoy.filter(r=>r.estado!=='pagado'&&r.estado!=='cancelada'&&((r.saldo||0)>0||(r.total||0)>0));
+  const totalCobrado=cobradas.reduce((a,r)=>a+(r.estado==='pagado'?(r.total||0):(r.total||0)-(r.saldo||0)),0);
+  const totalPendiente=pendientes.reduce((a,r)=>a+(r.saldo||r.total||0),0);
+  let html='';
+  if(!deHoy.length){
+    html='<div class="es"><div class="es-ic">📋</div><div>Sin remisiones registradas hoy</div></div>';
+  } else {
+    if(cobradas.length){
+      html+='<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--green);margin-bottom:8px">✅ Cobrado hoy</div>';
+      html+=cobradas.map(r=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${r.folio} · <strong>${r.cliente||'—'}</strong></span><span style="font-weight:700;color:var(--green)">${fmt(r.estado==='pagado'?(r.total||0):(r.total||0)-(r.saldo||0))}</span></div>`).join('');
+      html+=`<div style="display:flex;justify-content:space-between;padding:9px 0 4px;font-size:14px;font-weight:800;border-top:2px solid var(--green)"><span>Total cobrado</span><span style="color:var(--green)">${fmt(totalCobrado)} MXN</span></div>`;
+    }
+    if(pendientes.length){
+      html+=`<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#c0392b;margin-top:${cobradas.length?'16px':'0'};margin-bottom:8px">⏳ Pendiente de cobro</div>`;
+      html+=pendientes.map(r=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${r.folio} · <strong>${r.cliente||'—'}</strong></span><span style="font-weight:700;color:#c0392b">${fmt(r.saldo||r.total||0)}</span></div>`).join('');
+      html+=`<div style="display:flex;justify-content:space-between;padding:9px 0 4px;font-size:14px;font-weight:800;border-top:2px solid #c0392b"><span>Por cobrar</span><span style="color:#c0392b">${fmt(totalPendiente)} MXN</span></div>`;
+    }
+  }
+  document.getElementById('resumenFecha').textContent=hoy;
+  document.getElementById('resumenBody').innerHTML=html;
+  // Texto para WhatsApp
+  let wa='📊 *SUMETEC — Resumen del día '+hoy+'*\n';
+  if(cobradas.length) wa+='━━━━━━━━━━━━\n✅ *Cobrado:*\n'+cobradas.map(r=>'  '+r.folio+' · '+(r.cliente||'—')+' · '+fmt(r.estado==='pagado'?(r.total||0):(r.total||0)-(r.saldo||0))+' MXN').join('\n')+'\n  *Total: '+fmt(totalCobrado)+' MXN*\n';
+  if(pendientes.length) wa+='━━━━━━━━━━━━\n⏳ *Por cobrar:*\n'+pendientes.map(r=>'  '+r.folio+' · '+(r.cliente||'—')+' · '+fmt(r.saldo||r.total||0)+' MXN').join('\n')+'\n  *Total pendiente: '+fmt(totalPendiente)+' MXN*\n';
+  _resumenWAText=wa;
+  document.getElementById('ovResumen').classList.add('open');
+}
+function compartirResumen(){
+  if(!_resumenWAText)return;
+  window.open('https://wa.me/?text='+encodeURIComponent(_resumenWAText),'_blank');
 }
 
 function verCobros(){
@@ -1540,6 +1655,7 @@ function verCobros(){
 let _prId=null,_prFolio=null,_prEsLocal=false;
 
 async function abrirPagoRapido(id, folio, esLocal){
+  closeOv('ovCobros'); // cerrar la lista para ver el modal de pago
   _prId=id; _prFolio=folio; _prEsLocal=esLocal;
 
   // Buscar datos: local primero, luego servidor
@@ -1628,24 +1744,33 @@ async function confirmarPagoRapido(){
     enviarPagoConCola(rem,rem.pagos[rem.pagos.length-1]);
     sincronizarRemision(rem);
 
-    closeOv('ovPagoRapido');
+    // Activar esta remisión como la actual → desbloquea el botón PDF del toolbar
+    remActualId=rem.id;
+    _desbloquearPDF(true);
+    renderPagos();
+
+    // Mostrar botón para abrir la remisión y enviar PDF
+    const _vbtn=document.getElementById('btnVerRemisionPago');
+    if(_vbtn)_vbtn.style.display='block';
+    const _cbtn=document.getElementById('btnConfirmarPagoRapido');
+    if(_cbtn)_cbtn.style.display='none';
 
     // Mostrar resultado
     if(esPagoCompleto){
       toast('✅ PAGADO COMPLETO — '+fmt(monto)+' MXN','ok',4000);
     } else {
-      toast('💛 Abono de '+fmt(monto)+' registrado. Saldo: '+fmt(rem.saldo)+' MXN','ok',4000);
+      toast('💛 Abono '+fmt(monto)+' | Saldo: '+fmt(rem.saldo)+' MXN','ok',4000);
     }
 
-    // Generar PDF actualizado (sobreescribe el anterior en Drive)
-    if(rem.data&&window.jspdf&&isOnline){
+    // Subir PDF actualizado a Drive (sobreescribe el anterior)
+    if(rem.data&&window.jspdf){
       setTimeout(()=>{try{descargarPDF(rem);}catch(e){}},600);
     } else {
-      _encolarPDFsiHace(rem); // sin jsPDF o sin red → cola para cuando pueda
+      _encolarPDFsiHace(rem);
     }
 
     // Refrescar la lista de cobros
-    setTimeout(()=>{if(document.getElementById('ovCobros').classList.contains('open'))verCobros();},500);
+    setTimeout(()=>{if(document.getElementById('ovCobros').classList.contains('open'))verCobros();},800);
 
   }finally{
     if(btn){btn.disabled=false;btn.textContent='✅ Registrar pago';}
@@ -1740,7 +1865,28 @@ function _renderHistCombinado(q){
     :combinados;
   renderRems(lista);
 }
-function filtRems(q){_renderHistCombinado(q);}
+function filtRems(q){_filtroClienteActivo=null;const chip=document.getElementById('histFiltroCliente');if(chip)chip.style.display='none';_renderHistCombinado(q);}
+
+let _filtroClienteActivo=null;
+function filtrarPorCliente(nombre){
+  _filtroClienteActivo=nombre;
+  const todas=[...remisiones,..._histServidor.filter(s=>!remisiones.find(r=>r.folio===s.folio))];
+  const filtradas=todas.filter(r=>(r.cliente||'').toLowerCase().includes(nombre.toLowerCase()));
+  const chip=document.getElementById('histFiltroCliente');
+  const nomEl=document.getElementById('histFiltroNombre');
+  const totEl=document.getElementById('histFiltroTotal');
+  if(chip){chip.style.display='flex';}
+  if(nomEl)nomEl.textContent='👤 '+nombre;
+  const deuda=filtradas.filter(r=>r.estado!=='pagado'&&r.estado!=='cancelada').reduce((a,r)=>a+(r.saldo||0),0);
+  if(totEl)totEl.textContent=deuda>0?('Adeudo: '+fmt(deuda)+' MXN'):'Sin adeudos';
+  renderRems(filtradas);
+}
+function limpiarFiltroCliente(){
+  _filtroClienteActivo=null;
+  const chip=document.getElementById('histFiltroCliente');if(chip)chip.style.display='none';
+  const inp=document.getElementById('histBusqInput');if(inp)inp.value='';
+  _renderHistCombinado();
+}
 function renderRems(list){
   const div=document.getElementById('remList');
   if(!list.length){
@@ -1764,7 +1910,7 @@ function renderRems(list){
     return`<div class="rem-i" ${onclick} style="${esServidor?'cursor:default':''}">
       <div style="flex:1;min-width:0">
         <div class="rem-fo">${r.folio} ${etiqueta}</div>
-        <div class="rem-cl">${r.cliente} · ${r.fecha}</div>
+        <div class="rem-cl"><span style="cursor:pointer;text-decoration:underline dotted" onclick="event.stopPropagation();filtrarPorCliente('${(r.cliente||'').replace(/'/g,"\\'")}');verHist()">${r.cliente}</span> · ${r.fecha}</div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
         ${_estadoBadge(r)}
@@ -1867,10 +2013,23 @@ function parseCSV(text){
   const lines=text.trim().split(/\r?\n/);if(lines.length<2)return[];lines.shift();
   return lines.map(line=>{const cols=[];let cur='',inQ=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"'){inQ=!inQ;continue}if(ch===','&&!inQ){cols.push(cur.trim());cur='';continue}cur+=ch;}cols.push(cur.trim());return cols;}).filter(r=>r.some(c=>c!==''));
 }
+function _actualizarTokenStatus(){
+  const t=API_TOKEN;
+  const el=document.getElementById('tokenStatus');if(!el)return;
+  el.innerHTML=t?'<span style="color:var(--green)">✓ Token configurado</span>':'<span style="color:#C0392B">⚠️ Sin token — las llamadas al servidor serán rechazadas</span>';
+}
+function guardarApiToken(){
+  const v=(document.getElementById('api_token_input').value||'').trim();
+  API_TOKEN=v;
+  localStorage.setItem('api_token',v);
+  _actualizarTokenStatus();
+}
 function abrirCatalogos(){
   document.getElementById('gs_url').value=localStorage.getItem('gs_url')||'';
   document.getElementById('gsSync').textContent=localStorage.getItem('gs_sync')||'—';
   document.getElementById('drive_url').value=localStorage.getItem('drive_url')||'';
+  document.getElementById('api_token_input').value=localStorage.getItem('api_token')||'';
+  _actualizarTokenStatus();
   document.getElementById('ovCat').classList.add('open');
 }
 async function conectarGS(){
@@ -1886,7 +2045,7 @@ async function conectarGS(){
     if(jP.error)throw new Error(jP.error);
     if(jC.error)throw new Error(jC.error);
     PRODUCTOS=jP.map(p=>({clave:p.CODIGO||'',desc:p.DESCRIPCION||'',precio:+p.COSTO_CLIENTE||0,iva:ivaGlobal})).filter(p=>p.clave);
-    CLIENTES=jC.map(c=>({nombre:c.NOMBRE||'',rfc:c.RFC||'',dir:c.DIRECCION||'',cp:c.CP||'',tel:c.TEL||'',email:c.CORREO||''})).filter(c=>c.nombre);
+    CLIENTES=jC.map(c=>({nombre:c.NOMBRE||'',rfc:c.RFC||'',dir:c.DIRECCION||'',cp:c.CP||'',tel:c.TEL||'',email:c.CORREO||'',contacto:c.CONTACTO||''})).filter(c=>c.nombre);
     localStorage.setItem('gs_url',url);
     localStorage.setItem('gs_cp',JSON.stringify(PRODUCTOS));
     localStorage.setItem('gs_cc',JSON.stringify(CLIENTES));
@@ -1915,7 +2074,7 @@ function loadGSCache(){
     const jP=await rP.json(),jC=await rC.json();
     if(jP.error||jC.error)return;
     PRODUCTOS=jP.map(p=>({clave:p.CODIGO||'',desc:p.DESCRIPCION||'',precio:+p.COSTO_CLIENTE||0,iva:ivaGlobal})).filter(p=>p.clave);
-    CLIENTES=jC.map(c=>({nombre:c.NOMBRE||'',rfc:c.RFC||'',dir:c.DIRECCION||'',cp:c.CP||'',tel:c.TEL||'',email:c.CORREO||''})).filter(c=>c.nombre);
+    CLIENTES=jC.map(c=>({nombre:c.NOMBRE||'',rfc:c.RFC||'',dir:c.DIRECCION||'',cp:c.CP||'',tel:c.TEL||'',email:c.CORREO||'',contacto:c.CONTACTO||''})).filter(c=>c.nombre);
     localStorage.setItem('gs_cp',JSON.stringify(PRODUCTOS));
     localStorage.setItem('gs_cc',JSON.stringify(CLIENTES));
     localStorage.setItem('gs_sync',new Date().toLocaleString('es-MX'));
@@ -1926,7 +2085,7 @@ function loadGSCache(){
 // ── NUEVO CLIENTE ──────────────────────────────────────────
 let _ncTargetUso = false;
 function abrirNuevoCliente(){
-  ['nc_nombre','nc_dir','nc_cp','nc_tel'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
+  ['nc_nombre','nc_dir','nc_cp','nc_tel','nc_rfc','nc_email','nc_contacto'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
   closeOv('ovHist'); document.getElementById('cPanel').classList.remove('open'); cPanelOpen=false;
   document.getElementById('ovNuevoCliente').classList.add('open');
   document.getElementById('nc_nombre').focus();
@@ -1940,6 +2099,9 @@ function guardarNuevoCliente(soloAhora){
     dir:document.getElementById('nc_dir').value.trim(),
     cp:document.getElementById('nc_cp').value.trim(),
     tel:document.getElementById('nc_tel').value.trim(),
+    rfc:document.getElementById('nc_rfc').value.trim(),
+    email:document.getElementById('nc_email').value.trim(),
+    contacto:document.getElementById('nc_contacto').value.trim(),
   };
   if(!soloAhora){
     CLIENTES.push(cl);
@@ -1950,7 +2112,7 @@ function guardarNuevoCliente(soloAhora){
   } else {
     toast('Cliente cargado en formulario ✓','ok');
   }
-  ['nombre','dir','cp','tel'].forEach(f=>{const el=document.getElementById('c_'+f);if(el)el.value=cl[f]||''});
+  ['nombre','dir','cp','tel','rfc','email','contacto'].forEach(f=>{const el=document.getElementById('c_'+f);if(el)el.value=cl[f]||''});
   closeOv('ovNuevoCliente'); autosave();
 }
 
@@ -2015,9 +2177,143 @@ function syncPrintHeader(){
 // desde los datos guardados (no desde el formulario) y SOLO lo sube a Drive,
 // sin descargar/compartir. Se usa al convertir TMP-→REM- para que el PDF en
 // Drive lleve el folio definitivo.
-function descargarPDF(remOverride){
-  const _regen = !!(remOverride && remOverride.data);
+// ── Comprobante de pago (para remisiones remotas sin items) ──────
+// Genera un PDF simple con folio, cliente, total y el historial de pagos.
+function _generarComprobantePago(rem, descargar){
+  if(!window.jspdf){toast('Necesitas internet para generar el PDF','err');return;}
+  try{
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
+    const ML=20,CW=170,PW=210;
+    const NAV=[11,45,74],GRN=[28,110,74],MUT=[110,110,115],BRD=[229,229,231],BG=[243,245,247];
+    let y=20;
+
+    // Logo
+    const logoSrc=document.getElementById('logoImg')?.src;
+    if(logoSrc&&logoSrc.length>100){
+      try{
+        const ext=logoSrc.startsWith('data:image/png')?'PNG':'JPEG';
+        doc.addImage(logoSrc,ext,ML,y-5,30,15,'logo','SLOW');
+      }catch(e){}
+    }
+
+    // Título
+    doc.setFontSize(18).setFont('helvetica','bold').setTextColor(...NAV);
+    doc.text('COMPROBANTE DE PAGO',ML+CW,y+4,{align:'right'});
+    doc.setFontSize(11).setTextColor(...GRN);
+    doc.text(rem.folio||'—',ML+CW,y+11,{align:'right'});
+    const horaActual=new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+    doc.setFontSize(7).setFont('helvetica','normal').setTextColor(...MUT);
+    doc.text((rem.fecha||'')+' · '+horaActual,ML+CW,y+16,{align:'right'});
+    y+=24;
+
+    doc.setDrawColor(...BRD).setLineWidth(0.4).line(ML,y,ML+CW,y);
+    y+=6;
+
+    // Datos del cliente
+    doc.setFontSize(8).setFont('helvetica','bold').setTextColor(...MUT);
+    doc.text('CLIENTE',ML,y);
+    y+=5;
+    doc.setFontSize(11).setFont('helvetica','bold').setTextColor(...NAV);
+    doc.text(rem.cliente||'—',ML,y);
+    y+=12;
+
+    // Total de la remisión
+    doc.setFillColor(...BG).setDrawColor(...BRD).setLineWidth(0.3);
+    doc.roundedRect(ML,y,CW,14,2,2,'FD');
+    doc.setFontSize(8).setFont('helvetica','normal').setTextColor(...MUT);
+    doc.text('Total de la remisión',ML+5,y+5);
+    doc.setFontSize(13).setFont('helvetica','bold').setTextColor(...NAV);
+    doc.text(fmt(rem.total||0)+' MXN',ML+CW-5,y+9,{align:'right'});
+    y+=20;
+
+    // Historial de pagos
+    const anulados=new Set((rem.pagos||[]).filter(p=>p.tipo==='anulacion').map(p=>p.pago_ref));
+    const pagosValidos=(rem.pagos||[]).filter(p=>p.tipo!=='anulacion'&&!anulados.has(p.uuid));
+    doc.setFontSize(8).setFont('helvetica','bold').setTextColor(...MUT);
+    doc.text('HISTORIAL DE PAGOS',ML,y);
+    y+=5;
+    doc.setDrawColor(...BRD).setLineWidth(0.2).line(ML,y,ML+CW,y);
+    y+=4;
+
+    pagosValidos.forEach((p,i)=>{
+      const esPar=i%2===0;
+      if(esPar){doc.setFillColor(...BG);doc.rect(ML,y-1,CW,7,'F');}
+      doc.setFontSize(9).setFont('helvetica','normal').setTextColor(...NAV);
+      const tipo=p.tipo==='pago_completo'?'Pago completo':'Abono';
+      doc.text(tipo+' — '+p.fecha,ML+3,y+4);
+      doc.setFont('helvetica','bold');
+      doc.text(fmt(p.monto),ML+CW-3,y+4,{align:'right'});
+      if(p.saldo_despues!=null){
+        doc.setFontSize(7).setFont('helvetica','normal').setTextColor(...MUT);
+        doc.text('Saldo después: '+fmt(p.saldo_despues),ML+3,y+8);
+        y+=10;
+      } else {y+=8;}
+    });
+    y+=4;
+
+    // Saldo final
+    const pagado=rem.estado==='pagado'||(rem.saldo||0)<=0;
+    doc.setFillColor(pagado?28:192, pagado?110:57, pagado?74:43);
+    doc.roundedRect(ML,y,CW,12,2,2,'F');
+    doc.setFontSize(10).setFont('helvetica','bold').setTextColor(255,255,255);
+    if(pagado){
+      doc.text('✓ PAGADO COMPLETO',ML+5,y+8);
+    } else {
+      doc.text('Saldo pendiente: '+fmt(rem.saldo||0)+' MXN',ML+5,y+8);
+    }
+    y+=18;
+
+    // Firma si hay
+    const firmaBase=rem.data&&rem.data._firma?rem.data._firma:null;
+    if(firmaBase){
+      try{
+        doc.setFontSize(7).setTextColor(...MUT);
+        doc.text('Firma del cliente',ML+25,y+22,{align:'center'});
+        doc.addImage(firmaBase,'PNG',ML,y,50,18);
+        doc.setDrawColor(...BRD).setLineWidth(0.3).line(ML,y+19,ML+50,y+19);
+      }catch(e){}
+    }
+
+    // Nombre de empresa en pie
+    const empNombre=empresa.nombre||'SUMETEC';
+    doc.setFontSize(7).setFont('helvetica','italic').setTextColor(...MUT);
+    doc.text(empNombre,ML+CW/2,285,{align:'center'});
+
+    const filename='COMPROBANTE_'+rem.folio+'_'+new Date().toLocaleDateString('es-MX').replace(/\//g,'')+'.pdf';
+
+    // Siempre subir a Drive
+    guardarEnDrive(doc,rem.folio,rem.cliente,rem.total,filename,rem);
+
+    // Descargar solo si el usuario lo pidió explícitamente
+    if(descargar){
+      const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(/Mac/i.test(navigator.userAgent)&&navigator.maxTouchPoints>1);
+      if(isIOS&&navigator.share){
+        const blob=doc.output('blob');
+        const file=new File([blob],filename,{type:'application/pdf'});
+        navigator.share({files:[file],title:filename}).catch(()=>{});
+      } else {
+        doc.save(filename);
+        toast('Descargado: '+filename,'ok');
+      }
+    }
+  }catch(e){toast('Error generando comprobante: '+e.message,'err');console.error(e);}
+}
+
+function descargarPDF(remOverride, forzarDescarga){
+  // _regen=true → solo sube a Drive (sin descargar al celular)
+  // forzarDescarga=true → genera desde datos guardados PERO también descarga
+  const _regen = !!(remOverride && remOverride.data) && !forzarDescarga;
   const _d = _regen ? remOverride.data : null;
+
+  // ── Caso especial: remisión remota sin items (cobro desde otro dispositivo) ──
+  // En vez de un PDF vacío, generar un comprobante de pago con el historial.
+  const sinItems = _d && (!_d.items || _d.items.filter(i=>+i.qty>0&&+i.precio>0).length===0);
+  if(sinItems && remOverride){
+    _generarComprobantePago(remOverride, forzarDescarga);
+    return;
+  }
+
   // iOS/iPadOS: iPadOS 13+ se reporta como MacIntel, no como iPad
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
                 (/Mac/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
@@ -2068,19 +2364,21 @@ function descargarPDF(remOverride){
     const dPago     = _regen ? (_d.d_pago||'')   : document.getElementById('d_pago').value;
 
 
-    const obs_      = (_regen ? _d.obs : document.getElementById('obs').value)||'Los precios están sujetos a cambio sin previo aviso.';
+    let obs_        = (_regen ? _d.obs : document.getElementById('obs').value)||'Los precios están sujetos a cambio sin previo aviso.';
+    // Lookup local propio — NO referenciar remActivo aquí (se declara ~300 líneas más abajo → TDZ ReferenceError)
+    const _remCanc = _regen ? remOverride : remisiones.find(r=>String(r.id)===String(remActualId));
+    if(_remCanc && _remCanc.estado==='cancelada'){
+      const motCan=_remCanc.motivoCancelacion||'';
+      const fecCan=_remCanc.fechaCancelacion||'';
+      obs_='⚠ CANCELADA'+(motCan?' — '+motCan:'')+(fecCan?' | '+fecCan:'')+'\n'+obs_;
+    }
     const empNombre = empresa.nombre||'SUMETEC';
     const empSlogan = empresa.slogan||'Suministramos soluciones, construimos confianza.';
 
     const _itemsSrc = _regen ? (_d.items||[]) : items;
     const activeItems = _itemsSrc.filter(it=>it.clave||it.desc||(+it.qty>0));
-    let sub=0,ivaT=0,arts=0,pzs=0;
-    activeItems.forEach(it=>{
-      const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;
-      if(q>0&&p>0){const i=q*p;sub+=i;ivaT+=i*(v/100);arts++;pzs+=q;}
-    });
     const dp=+(_regen ? _d.descPct : document.getElementById('descPct').value)||0;
-    const desc_=sub*(dp/100), tot=sub+ivaT-desc_;
+    const{sub,iva:ivaT,desc:desc_,tot,arts,pzs}=_calcTot(activeItems,dp);
 
     // ── jsPDF init ───────────────────────────────────────
     const {jsPDF} = window.jspdf;
@@ -2384,19 +2682,11 @@ function descargarPDF(remOverride){
       for(let pg=1;pg<=pageCount;pg++){
         doc.setPage(pg);
         doc.saveGraphicsState();
-        doc.setGState(doc.GState({opacity:0.25}));
+        doc.setGState(doc.GState({opacity:0.09}));
         doc.setFontSize(58).setFont('helvetica','bold').setTextColor(192,57,43);
         doc.text('CANCELADO',ML+CW/2,PH/2,{align:'center',angle:30});
-        doc.setFontSize(32).setTextColor(192,57,43);
-        doc.text('CANCELADO',ML+CW/2,PH/2+40,{align:'center',angle:30});
         doc.restoreGraphicsState();
       }
-      // Banda roja en la parte superior
-      doc.setFillColor(192,57,43).rect(ML,6,CW,14,'F');
-      doc.setFontSize(9).setFont('helvetica','bold').setTextColor(255,255,255);
-      const motivo=remActivo.motivoCancelacion?(' — '+remActivo.motivoCancelacion):'';
-      const fechaCan=remActivo.fechaCancelacion||'';
-      doc.text('⚠ REMISIÓN CANCELADA'+motivo+(fechaCan?' · '+fechaCan:''),ML+CW/2,14,{align:'center'});
     }
 guardarEnDrive(doc,folio_,cNombre,tot,filename,_regen?remOverride:null);
     if(_regen)return; // regeneración: solo subir a Drive con el folio definitivo, sin descargar/compartir
@@ -2665,11 +2955,8 @@ async function registrarPagoConGuardar(tipo){
 
 // Total calculado desde el formulario activo (cuando aún no hay remisión guardada)
 function _calcTotalFormulario(){
-  let sub=0,iva=0;
-  items.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const i=q*p;sub+=i;iva+=i*(v/100);}});
   const dp=+document.getElementById('descPct').value||0;
-  const raw=sub+iva-sub*(dp/100);
-  return iva===0?Math.round(raw):Math.round(raw*100)/100;
+  return _calcTot(items,dp).tot;
 }
 
 // ── PDF bloqueado/desbloqueado ────────────────────────────────
@@ -2681,7 +2968,13 @@ function _desbloquearPDF(si){
 }
 function descargarPDFSiRegistrado(){
   if(!remActualId){toast('Pulsa REGISTRAR primero para guardar la remisión','warn',3500);return;}
-  descargarPDF();
+  const rem=remisiones.find(r=>String(r.id)===String(remActualId));
+  if(rem&&rem.data){
+    // forzarDescarga=true → genera desde datos guardados (con pagos actualizados) Y descarga al celular
+    descargarPDF(rem, true);
+  } else {
+    descargarPDF(); // formulario activo
+  }
 }
 
 // ── Estado de pago pendiente (antes de registrar) ─────────────
@@ -3014,17 +3307,24 @@ function enviarPagoConCola(r,pago){
   if(isOnline){_enviarPago(r,pago);}
   else{toast('Sin conexión — pago guardado en cola','warn',3500);}
 }
+function _alertarNoAutorizado(d){
+  if(d&&d.error&&String(d.error).includes('no autorizado'))
+    toast('⛔ Token incorrecto — abre ⚙️ Catálogos → Token de seguridad y corrígelo','err',10000);
+}
 function _enviarPago(r,pago){
   const url=getScriptUrl();if(!url)return;
   fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
-    body:JSON.stringify({tipo:'actualizar_remision',folio:r.folio,saldo:r.saldo,estado:r.estado,pago,device:DEVICE_ID})
-  }).then(res=>{if(!res.ok)throw new Error();_dequeueByUUID(pago.uuid);_marcarPagoSync(pago.uuid);actualizarBadgePendientes();})
-    .catch(()=>{/* permanece en cola, se reintenta luego */actualizarBadgePendientes();});
+    body:JSON.stringify({tipo:'actualizar_remision',id:r.id||'',folio:r.folio,saldo:r.saldo,estado:r.estado,pago,device:DEVICE_ID})
+  }).then(res=>res.json()).then(d=>{
+    if(d&&d.ok){_dequeueByUUID(pago.uuid);_marcarPagoSync(pago.uuid);}
+    else _alertarNoAutorizado(d);
+    actualizarBadgePendientes();
+  }).catch(()=>{actualizarBadgePendientes();});
 }
 function _encolarPago(r,pago){
   const cola=leerSeguro('cola_offline',[]);
   if(!cola.find(p=>p.pago&&p.pago.uuid===pago.uuid)){
-    cola.push({folio:r.folio,saldo:r.saldo,estado:r.estado,pago,device:DEVICE_ID,ts:Date.now()});
+    cola.push({id:r.id||'',folio:r.folio,saldo:r.saldo,estado:r.estado,pago,device:DEVICE_ID,ts:Date.now()});
     guardarSeguro('cola_offline',JSON.stringify(cola));
   }
 }
@@ -3041,9 +3341,11 @@ async function procesarCola(){
   for(const item of [...cola]){
     try{
       const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
-        body:JSON.stringify({tipo:'actualizar_remision',folio:item.folio,saldo:item.saldo,estado:item.estado,pago:item.pago,device:item.device})
+        body:JSON.stringify({tipo:'actualizar_remision',id:item.id||'',folio:item.folio,saldo:item.saldo,estado:item.estado,pago:item.pago,device:item.device})
       });
-      if(res.ok){_dequeueByUUID(item.pago.uuid);_marcarPagoSync(item.pago.uuid);enviados++;}
+      const d=await res.json();
+      if(d&&d.ok){_dequeueByUUID(item.pago.uuid);_marcarPagoSync(item.pago.uuid);enviados++;}
+      else _alertarNoAutorizado(d);
     }catch(e){}
   }
   actualizarBadgePendientes();
@@ -3062,20 +3364,30 @@ function actualizarBadgePendientes(){
   actualizarPanelConexion();
 }
 
-function closeOv(id){document.getElementById(id).classList.remove('open')}
+function closeOv(id){
+  document.getElementById(id)?.classList.remove('open');
+  if(id==='ovPagoRapido'){
+    const b=document.getElementById('btnVerRemisionPago');if(b)b.style.display='none';
+    const c=document.getElementById('btnConfirmarPagoRapido');if(c)c.style.display='';
+  }
+}
+function verRemisionDesdePago(){
+  const id=_prId;
+  closeOv('ovPagoRapido');closeOv('ovCobros');closeOv('ovHist');
+  if(id)loadRemCobro(id);
+}
 
 // ── Firma digital del cliente ─────────────────────────────────
 let _firmaData=null; // base64 PNG de la firma actual
 let _firmaDrawing=false;
 
 // ── Detección de adeudo anterior del cliente ─────────────────
-let _adeudoTimer=null;
+let _adeudoTimer=null,_adeudoClienteActual=null;
 function _verificarAdeudo(nombre){
   clearTimeout(_adeudoTimer);
   if(!nombre||nombre.length<3){_ocultarAdeudo();return;}
   _adeudoTimer=setTimeout(()=>{
     const n=nombre.trim().toLowerCase();
-    // Buscar remisiones de este cliente con saldo pendiente (excluyendo la actual)
     const adeudos=remisiones.filter(r=>
       String(r.id)!==String(remActualId)&&
       (r.cliente||'').toLowerCase().includes(n)&&
@@ -3083,20 +3395,27 @@ function _verificarAdeudo(nombre){
       (r.saldo||0)>0
     );
     if(!adeudos.length){_ocultarAdeudo();return;}
+    _adeudoClienteActual=nombre;
     const totalAdeudo=adeudos.reduce((a,r)=>a+(r.saldo||0),0);
-    const box=document.getElementById('adeudoBox');
-    if(!box)return;
-    box.style.display='block';
-    box.innerHTML='⚠️ <strong>Adeudo anterior:</strong> '+fmt(totalAdeudo)+' MXN en '+adeudos.length+' remisión(es)<br>'+
-      adeudos.map(r=>`<span style="font-size:11px;color:#92400e">${r.folio} · ${r.fecha} · Saldo: ${fmt(r.saldo)}</span>`).join('<br>')+
-      '<div style="margin-top:8px;display:flex;gap:8px">'+
-      '<button class="btn" style="font-size:11px;padding:4px 10px;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:6px" onclick="verHist()">📋 Ver en historial</button>'+
-      '</div>';
-  },400);
+    document.getElementById('adeudoClienteNombre').textContent=nombre;
+    document.getElementById('adeudoDetalle').innerHTML=adeudos.map(r=>
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #fecaca;font-size:12.5px;gap:8px">
+        <span style="color:#7f1d1d;font-weight:700">${r.folio}</span>
+        <span style="color:#92400e;flex:1;text-align:center">${r.fecha}</span>
+        <span style="font-weight:800;color:#c0392b;white-space:nowrap">${fmt(r.saldo)} MXN</span>
+      </div>`
+    ).join('');
+    document.getElementById('adeudoTotalBig').textContent='Total: '+fmt(totalAdeudo)+' MXN';
+    document.getElementById('ovAdeudo').classList.add('open');
+  },600);
 }
-function _ocultarAdeudo(){
-  const box=document.getElementById('adeudoBox');
-  if(box)box.style.display='none';
+function _ocultarAdeudo(){closeOv('ovAdeudo');}
+function _irACobrarAdeudo(){
+  closeOv('ovAdeudo');
+  if(_adeudoClienteActual){
+    verHist();
+    setTimeout(()=>filtrarPorCliente(_adeudoClienteActual),200);
+  }
 }
 
 // ── Pantalla de confirmación tras REGISTRAR ──────────────────
@@ -3189,6 +3508,26 @@ function toast(msg,type='',dur=2800){const t=document.getElementById('toast');cl
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('./sw.js')
     .catch(e => console.warn('SW:', e));
+  // Cuando un SW nuevo toma control (deploy de versión), recargar UNA vez para
+  // garantizar que ambos teléfonos corran el HTML actualizado y no el cacheado.
+  let _swRecargado=false;
+  let _huboControlador=!!navigator.serviceWorker.controller; // ¿ya había SW al cargar?
+  const _modalesCobro=['ovPagoRapido','ovCancelar','ovAnular','ovFirma'];
+  const _ocupado=()=>_modalesCobro.some(id=>document.getElementById(id)?.classList.contains('open'));
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(_swRecargado)return;
+    // Primera reclamación (instalación inicial): NO recargar — evita el parpadeo de primera visita.
+    if(!_huboControlador){ _huboControlador=true; return; }
+    // Si hay un cobro/cancelación en curso, diferir la recarga hasta cerrar el modal.
+    if(_ocupado()){
+      try{toast('Nueva versión lista — se aplicará al terminar','ok',4000);}catch(_){}
+      const iv=setInterval(()=>{
+        if(!_ocupado()){clearInterval(iv);_swRecargado=true;location.reload();}
+      },1500);
+      return;
+    }
+    _swRecargado=true; location.reload();
+  });
 }
 </script>
 </body>

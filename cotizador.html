@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -437,6 +437,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <div class="fg"><label>☁️ URL del Apps Script — Drive &amp; Folios</label><input id="drive_url" type="text" placeholder="https://script.google.com/macros/s/.../exec" oninput="guardarDriveUrl()"><div style="font-size:11px;color:var(--muted);margin-top:3px">Guarda PDFs en Drive y sincroniza el contador de folios</div></div>
     <div id="driveStatus" style="font-size:12px;color:var(--muted);min-height:16px"></div>
   </div>
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+    <div class="fg"><label>🔑 Token de seguridad</label><input id="api_token_input" type="text" placeholder="Ej: MiTokenSecreto2026" oninput="guardarApiToken()"><div style="font-size:11px;color:var(--muted);margin-top:3px">Debe coincidir con <code>API_TOKEN</code> en tu <code>apps_script.js</code>. Nunca lo pongas en el código fuente.</div></div>
+    <div id="tokenStatus" style="font-size:12px;min-height:16px"></div>
+  </div>
 </div></div>
 
 
@@ -501,6 +505,24 @@ const EMPRESA_DEFAULT={                                                         
 // Apunta al Apps Script que tiene el apps_script.js completo y actualizado.
 const URL_CATALOGOS='https://script.google.com/macros/s/AKfycbybfhE5EGjP93myfFv-DcE22CPAt-cjbXVijcmWW0RGQ5cJn5DX9JrGOHLtEYGCor-l/exec';
 const URL_DRIVE='https://script.google.com/macros/s/AKfycbybfhE5EGjP93myfFv-DcE22CPAt-cjbXVijcmWW0RGQ5cJn5DX9JrGOHLtEYGCor-l/exec';
+// Token de seguridad — leído de localStorage para no quedar en código fuente
+// Configurar en ⚙️ Catálogos → Token de seguridad
+let API_TOKEN=(localStorage.getItem('api_token')||'').trim();
+(function(){
+  const _f=window.fetch.bind(window);
+  window.fetch=function(input,init){
+    const url = (typeof input==='string') ? input : (input&&input.href) ? input.href : '';
+    if(url.includes('script.google.com')){
+      if(!url.includes('token=')){
+        input = url+(url.includes('?')?'&':'?')+'token='+encodeURIComponent(API_TOKEN);
+      }
+      if(init&&typeof init.body==='string'){
+        try{const b=JSON.parse(init.body); if(b.token===undefined){b.token=API_TOKEN; init={...init,body:JSON.stringify(b)};}}catch(_){}
+      }
+    }
+    return _f(input,init);
+  };
+})();
 // ─────────────────────────────────────────────────────────────────────────────
 
 let empresa={...EMPRESA_DEFAULT};
@@ -631,7 +653,12 @@ document.addEventListener('DOMContentLoaded',()=>{
   startHeartbeat();
   procesarColaCot();
   actualizarPanelConexion();
+  setTimeout(()=>{if(!API_TOKEN)toast('⚠️ Sin token — abre ⚙️ Catálogos → Token de seguridad antes de operar','warn',12000);},1500);
 });
+function _alertarNoAutorizado(d){
+  if(d&&d.error&&String(d.error).includes('no autorizado'))
+    toast('⛔ Token incorrecto — abre ⚙️ Catálogos → Token de seguridad y corrígelo','err',10000);
+}
 
 function setFecha(){document.getElementById('fechaDisp').textContent=new Date().toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'})}
 function syncFolio(v){document.getElementById('folioCard').textContent=v||'—';syncPrintHeader();autosave()}
@@ -958,10 +985,23 @@ function parseCSV(text){
   const lines=text.trim().split(/\r?\n/);if(lines.length<2)return[];lines.shift();
   return lines.map(line=>{const cols=[];let cur='',inQ=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"'){inQ=!inQ;continue}if(ch===','&&!inQ){cols.push(cur.trim());cur='';continue}cur+=ch;}cols.push(cur.trim());return cols;}).filter(r=>r.some(c=>c!==''));
 }
+function _actualizarTokenStatus(){
+  const t=API_TOKEN;
+  const el=document.getElementById('tokenStatus');if(!el)return;
+  el.innerHTML=t?'<span style="color:var(--green)">✓ Token configurado</span>':'<span style="color:#C0392B">⚠️ Sin token — las llamadas al servidor serán rechazadas</span>';
+}
+function guardarApiToken(){
+  const v=(document.getElementById('api_token_input').value||'').trim();
+  API_TOKEN=v;
+  localStorage.setItem('api_token',v);
+  _actualizarTokenStatus();
+}
 function abrirCatalogos(){
   document.getElementById('gs_url').value=localStorage.getItem('gs_url')||'';
   document.getElementById('gsSync').textContent=localStorage.getItem('gs_sync')||'—';
   document.getElementById('drive_url').value=localStorage.getItem('drive_url')||'';
+  document.getElementById('api_token_input').value=localStorage.getItem('api_token')||'';
+  _actualizarTokenStatus();
   document.getElementById('ovCat').classList.add('open');
 }
 async function conectarGS(){
@@ -977,7 +1017,7 @@ async function conectarGS(){
     if(jP.error)throw new Error(jP.error);
     if(jC.error)throw new Error(jC.error);
     PRODUCTOS=jP.map(p=>({clave:p.CODIGO||'',desc:p.DESCRIPCION||'',precio:+p.COSTO_CLIENTE||0,iva:ivaGlobal})).filter(p=>p.clave);
-    CLIENTES=jC.map(c=>({nombre:c.NOMBRE||'',rfc:c.RFC||'',dir:c.DIRECCION||'',cp:c.CP||'',tel:c.TEL||'',email:c.CORREO||''})).filter(c=>c.nombre);
+    CLIENTES=jC.map(c=>({nombre:c.NOMBRE||'',rfc:c.RFC||'',dir:c.DIRECCION||'',cp:c.CP||'',tel:c.TEL||'',email:c.CORREO||'',contacto:c.CONTACTO||''})).filter(c=>c.nombre);
     localStorage.setItem('gs_url',url);
     localStorage.setItem('gs_cp',JSON.stringify(PRODUCTOS));
     localStorage.setItem('gs_cc',JSON.stringify(CLIENTES));
@@ -1006,7 +1046,7 @@ function loadGSCache(){
     const jP=await rP.json(),jC=await rC.json();
     if(jP.error||jC.error)return;
     PRODUCTOS=jP.map(p=>({clave:p.CODIGO||'',desc:p.DESCRIPCION||'',precio:+p.COSTO_CLIENTE||0,iva:ivaGlobal})).filter(p=>p.clave);
-    CLIENTES=jC.map(c=>({nombre:c.NOMBRE||'',rfc:c.RFC||'',dir:c.DIRECCION||'',cp:c.CP||'',tel:c.TEL||'',email:c.CORREO||''})).filter(c=>c.nombre);
+    CLIENTES=jC.map(c=>({nombre:c.NOMBRE||'',rfc:c.RFC||'',dir:c.DIRECCION||'',cp:c.CP||'',tel:c.TEL||'',email:c.CORREO||'',contacto:c.CONTACTO||''})).filter(c=>c.nombre);
     localStorage.setItem('gs_cp',JSON.stringify(PRODUCTOS));
     localStorage.setItem('gs_cc',JSON.stringify(CLIENTES));
     localStorage.setItem('gs_sync',new Date().toLocaleString('es-MX'));
@@ -1611,6 +1651,21 @@ function toast(msg,type='',dur=2800){const t=document.getElementById('toast');cl
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('./cotizador-sw.js')
     .catch(e => console.warn('SW:', e));
+  let _swRecargado=false;
+  let _huboControlador=!!navigator.serviceWorker.controller; // ¿ya había SW al cargar?
+  const _ocupado=()=>Array.from(document.querySelectorAll('.ov')).some(o=>o.classList.contains('open'));
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(_swRecargado)return;
+    // Primera reclamación (instalación inicial): NO recargar — evita el parpadeo de primera visita.
+    if(!_huboControlador){ _huboControlador=true; return; }
+    // Si hay un modal abierto (editando datos), diferir la recarga hasta cerrarlo.
+    if(_ocupado()){
+      try{toast('Nueva versión lista — se aplicará al terminar','ok',4000);}catch(_){}
+      const iv=setInterval(()=>{ if(!_ocupado()){clearInterval(iv);_swRecargado=true;location.reload();} },1500);
+      return;
+    }
+    _swRecargado=true; location.reload();
+  });
 }
 </script>
 </body>
