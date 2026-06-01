@@ -1,0 +1,8 @@
+Dentro del codigo hay un recuadro donde puedes meter los datos de la empresa 
+una vez metida la informacion , actualizar el codigo del COTIZADOR en 
+https://script.google.com/home
+
+Link del cotizador:
+https://script.google.com/macros/s/AKfycbwCrxgsuzerMRRxUsk5BC68D4ONogrdvKzVV3r9oOs9WR2l3c_eIAQ1VH0Bs2WleHZj/exec
+
+Correo: miguelth9316@gmail.com

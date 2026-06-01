@@ -1,0 +1,11 @@
+# Secretos — NUNCA subir a GitHub
+TOKEN_SECRETO.txt
+
+# Backups automáticos
+*.BACKUP_*.html
+*.BACKUP_*.js
+
+# Archivos de sistema
+.graphify_python
+Thumbs.db
+desktop.ini
