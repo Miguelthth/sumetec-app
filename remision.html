@@ -1681,7 +1681,7 @@ async function abrirPagoRapido(id, folio, esLocal){
       const d=await r.json();
       if(d&&d.ok&&d.remision){
         rem={id:d.remision.id||id,folio:d.remision.folio||folio,
-          cliente:d.remision.cliente||'',total:+d.remision.total||0,
+          cliente:d.remision.cliente||'',fecha:d.remision.fecha||'',total:+d.remision.total||0,
           saldo:+d.remision.saldo||0,estado:d.remision.estado||'pendiente',
           pagos:(d.pagos||[]).map(p=>({...p,_sync:true})),
           sincronizado:true,_remota:true,
