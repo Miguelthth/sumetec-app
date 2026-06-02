@@ -1514,7 +1514,15 @@ async function registrarRemision(gpsParam){
   remisiones.unshift(rem);remActualId=rem.id;
   const okGuardado=persistirRemisiones();
   guardar();renderPagos();updateObsBalance(rem);
+  _desbloquearPDF(true);
   sincronizarRemision(rem);
+  // Generar y encolar PDF automáticamente (se sube al volver señal si estamos offline)
+  setTimeout(()=>{
+    console.log('✓ auto-PDF: isOnline='+isOnline+' jspdf='+!!window.jspdf);
+    if(!isOnline||!window.jspdf){console.warn('auto-PDF: saltando (online='+isOnline+' jspdf='+!!window.jspdf+')');return;}
+    console.log('→ auto-PDF: llamando descargarPDF');
+    descargarPDF(rem);
+  },400);
 }
 
 // ── Sincronizar remisión con Sheets (sin PDF) ─────────────────
