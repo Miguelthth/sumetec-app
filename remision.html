@@ -2455,7 +2455,7 @@ function _generarComprobantePago(rem, descargar){
     doc.roundedRect(ML,y,CW,12,2,2,'F');
     doc.setFontSize(10).setFont('helvetica','bold').setTextColor(255,255,255);
     if(pagado){
-      doc.text('✓ PAGADO',ML+5,y+8);
+      doc.text('Gracias por su compra',ML+5,y+8);
     } else {
       doc.text('Saldo pendiente: '+fmt(rem.saldo||0)+' MXN',ML+5,y+8);
     }
@@ -3342,9 +3342,9 @@ function _obsLineasPagos(r){
   if(!pagosValidos.length&&!anulaciones.length&&r.estado!=='pagado') return null;
 
   // Si está PAGADO COMPLETO (estado=pagado) y fue UN SOLO pago completo:
-  // SOLO mostrar "PAGADO COMPLETO ✓" sin listar balance (la watermark es suficiente)
+  // Mostrar mensaje agradecimiento simple (la watermark PAGADO es suficiente)
   if(r.estado==='pagado'&&pagosValidos.length===1&&pagosValidos[0].tipo==='pago_completo'&&!anulaciones.length){
-    return 'PAGADO COMPLETO ✓';
+    return 'Gracias por su compra';
   }
 
   // Si hay múltiples abonos o hay anulaciones: mostrar el detalle completo
