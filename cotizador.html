@@ -798,7 +798,7 @@ async function guardarEnDrive(doc,folio,cliente,total,filename,id,dataSnap){
   if(!isOnline){ toast('Sin conexión — la cotización se subirá a Drive al volver la señal','warn',4000); return; }
   toast('☁️ Guardando en Drive…','loading',0);
   fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
-    body:JSON.stringify({tipo:'cotizacion',id:entry.id,folio:entry.folio,cliente:entry.cliente,fecha:entry.fecha,total:entry.total,filename:entry.filename,pdf:entry.pdf,device:DEVICE_ID,
+    body:JSON.stringify({tipo:'cotizacion',token:_obtenerToken(),id:entry.id,folio:entry.folio,cliente:entry.cliente,fecha:entry.fecha,total:entry.total,filename:entry.filename,pdf:entry.pdf,device:DEVICE_ID,
       horaDescarga, lat:gps?gps.lat:'', lng:gps?gps.lng:'', datosCliente})})
     .then(r=>r.json())
     .then(d=>{
