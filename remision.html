@@ -2455,7 +2455,7 @@ function _generarComprobantePago(rem, descargar){
     doc.roundedRect(ML,y,CW,12,2,2,'F');
     doc.setFontSize(10).setFont('helvetica','bold').setTextColor(255,255,255);
     if(pagado){
-      doc.text('✓ PAGADO COMPLETO',ML+5,y+8);
+      doc.text('✓ PAGADO',ML+5,y+8);
     } else {
       doc.text('Saldo pendiente: '+fmt(rem.saldo||0)+' MXN',ML+5,y+8);
     }
@@ -3340,6 +3340,14 @@ function _obsLineasPagos(r){
   const pagosValidos=(r.pagos||[]).filter(p=>p.tipo!=='anulacion'&&!anulados.has(p.uuid));
   const anulaciones=(r.pagos||[]).filter(p=>p.tipo==='anulacion');
   if(!pagosValidos.length&&!anulaciones.length&&r.estado!=='pagado') return null;
+
+  // Si está PAGADO COMPLETO (estado=pagado) y fue UN SOLO pago completo:
+  // SOLO mostrar "PAGADO COMPLETO ✓" sin listar balance (la watermark es suficiente)
+  if(r.estado==='pagado'&&pagosValidos.length===1&&pagosValidos[0].tipo==='pago_completo'&&!anulaciones.length){
+    return 'PAGADO COMPLETO ✓';
+  }
+
+  // Si hay múltiples abonos o hay anulaciones: mostrar el detalle completo
   const lineas=['--- PAGOS ---'];
   pagosValidos.forEach(p=>{
     lineas.push('Abono '+fmt(p.monto)+' MXN | '+p.fecha);
@@ -3352,7 +3360,7 @@ function _obsLineasPagos(r){
   anulaciones.forEach(p=>{
     lineas.push('[Anulado] '+fmt(p.monto_ref||0)+' MXN ('+p.razon+') | '+p.fecha);
   });
-  if(r.estado==='pagado') lineas.push('PAGADO COMPLETO ✓');
+  if(r.estado==='pagado'&&(pagosValidos.length>1||anulaciones.length)) lineas.push('PAGADO COMPLETO ✓');
   return lineas.join('\n');
 }
 function updateObsBalance(r){
