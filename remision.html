@@ -1545,7 +1545,7 @@ async function sincronizarRemision(rem){
   // del envío, la remisión queda en la cola y se reintenta al reabrir.
   _encolarRemision(rem);
   if(!isOnline){console.log('⚠ offline, esperando señal'); return;}
-  const body={tipo:'remision',token:_obtenerToken(),id:rem.id,folio:rem.folio,cliente:rem.cliente,fecha:rem.fecha,
+  const body={tipo:'remision',token:API_TOKEN,id:rem.id,folio:rem.folio,cliente:rem.cliente,fecha:rem.fecha,
     total:rem.total,saldo:rem.saldo,estado:rem.estado,device:DEVICE_ID};
   try{
     console.log('→ POST al servidor:', body);
