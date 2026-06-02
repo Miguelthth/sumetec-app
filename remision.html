@@ -903,11 +903,13 @@ function actualizarPanelConexion(){
   const pend=leerSeguro('cola_offline',[]).length+leerSeguro('cola_remisiones',[]).length+leerSeguro('cola_pdf',[]).length;
   const ts=localStorage.getItem('cache_cobros_ts');
   const fr=ts?_frescuraTexto(ts).txt:'aún sin sincronizar';
+  const catSync=localStorage.getItem('gs_sync');
   if(!isOnline){
     bar.classList.add('show');bar.classList.remove('warn');
     msg.innerHTML='📵 <b>Sin conexión</b> — todo se guarda en este celular y se enviará solo al volver la señal.'
       +(pend>0?' <b>⏳ '+pend+' pendiente(s)</b>':'')
       +'<div style="font-weight:400;opacity:.92;margin-top:3px;font-size:11px">💡 Muévete a una zona con señal · revisa datos móviles/WiFi · usa el botón de WhatsApp para avisar un cobro · puedes seguir registrando, nada se pierde.</div>'
+      +'<div style="font-weight:400;opacity:.95;font-size:11px;margin-top:3px;background:rgba(0,0,0,.18);border-radius:6px;padding:3px 7px">🏷️ <b>Precios del catálogo:</b> '+(catSync?catSync+' (pueden haber cambiado)':'⚠️ sin descargar — conéctate una vez antes de cotizar')+'</div>'
       +'<div style="font-weight:400;opacity:.8;font-size:10.5px;margin-top:2px">Última sincronización: '+fr+'</div>';
   } else if(pend>0){
     bar.classList.add('show');bar.classList.add('warn');
@@ -953,6 +955,12 @@ async function heartbeat(){
         if(document.getElementById('ovHist')?.classList.contains('open')) verHist();
       }
       // si la versión es igual: no hay nada nuevo → no gastamos datos
+      // Catálogo: refrescar precios solo si cambiaron en el ERP (catVer distinto)
+      const cv = (pd && pd.catVer!=null) ? String(pd.catVer) : null;
+      if(cv!==null && cv!==localStorage.getItem('cat_ver')){
+        localStorage.setItem('cat_ver',cv);
+        refrescarCatalogo(true);
+      }
     }
   }catch(e){setOnlineState(false);}
 }
@@ -960,6 +968,30 @@ async function heartbeat(){
 function startHeartbeat(){heartbeat();_hbTimer=setInterval(heartbeat,10000);}
 window.addEventListener('online',()=>{heartbeat();setTimeout(procesarColaElim,900);setTimeout(procesarColaRemisiones,1500);setTimeout(procesarCola,2100);setTimeout(procesarColaPDF,2700);});
 window.addEventListener('offline',()=>setOnlineState(false));
+
+// C) Recordatorio/seguridad al salir o pasar a segundo plano.
+// Cuenta lo que falta por enviar (pagos+remisiones+pdfs+borrados).
+function _pendientesTotal(){
+  return leerSeguro('cola_offline',[]).length+leerSeguro('cola_remisiones',[]).length
+       +leerSeguro('cola_pdf',[]).length+leerSeguro('cola_elim',[]).length;
+}
+// Al minimizar/cambiar de app: si hay señal, intenta vaciar las colas en segundo plano
+// (clave en iPhone, que puede borrar los datos tras ~7 días sin abrir la app).
+// Al volver a la app: refresca.
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){
+    if(isOnline && _pendientesTotal()>0){
+      procesarColaElim();procesarColaRemisiones();procesarCola();procesarColaPDF();
+    }
+  } else {
+    heartbeat();
+    if(_pendientesTotal()>0) toast('⏳ Tienes '+_pendientesTotal()+' sin enviar — se sincroniza solo con señal','warn',4000);
+  }
+});
+// Al cerrar la pestaña con datos sin enviar: el navegador muestra su aviso de "¿salir?".
+window.addEventListener('beforeunload',(e)=>{
+  if(_pendientesTotal()>0){ e.preventDefault(); e.returnValue=''; return ''; }
+});
 
 // ── Cobros compartidos: caché desde Sheets (fuente única para ambos celulares) ──
 let _bajandoCobros=false;
@@ -1760,20 +1792,31 @@ function _estadoBadge(r){
 }
 
 // Lista combinada: servidor (ambos celulares) + remisiones locales sin sincronizar.
+// Clave de deduplicación ÚNICA para una remisión (cobros/historial).
+// El folio definitivo (REM-/SUM-) es la identidad compartida entre celulares y servidor;
+// el id (UUID) solo es local. ANTES se mezclaban (servidor sin ID → folio, local → UUID)
+// y la MISMA remisión salía 2-3 veces, todas cobrables. Ahora: si hay folio definitivo,
+// la clave es el folio; solo offline (TMP-) se usa el id.
+function _claveRem(o){
+  const f=String((o&&o.folio)||'').trim().toUpperCase();
+  if(f && f.indexOf('TMP-')!==0) return 'F:'+f;
+  return 'I:'+String((o&&o.id)||f);
+}
+
 function _cobrosCombinados(){
   const server=leerSeguro('cache_cobros',[]);
   const byKey=new Map();
-  const localIds=new Set(remisiones.map(r=>String(r.id)));
+  const localClaves=new Set(remisiones.map(r=>_claveRem(r)));
   // 1) Servidor = fuente de verdad para lo ya sincronizado
   for(const c of server){
-    const k=String(c.id||c.folio);
+    const k=_claveRem(c);
     byKey.set(k,{id:c.id||'',folio:c.folio,cliente:c.cliente,fecha:c.fecha,total:+c.total||0,saldo:+c.saldo||0,
-      estado:c.estado||'pendiente',_local:localIds.has(String(c.id)),_pendiente:false,_sobrepago:false});
+      estado:c.estado||'pendiente',_local:localClaves.has(k),_pendiente:false,_sobrepago:false});
   }
   // 2) Overlay de remisiones locales; si tienen cambios sin sincronizar, prevalecen
   for(const r of remisiones){
     if(r.estado==='pagado'||!((r.saldo||r.total)>0))continue;
-    const k=String(r.id||r.folio);
+    const k=_claveRem(r);
     const tienePendiente=!r.sincronizado||(r.pagos||[]).some(p=>p&&p._sync!==true&&p.tipo!=='anulacion');
     const sobrepago=_sumaPagos(r)>(r.total||0)+0.01;
     const ya=byKey.get(k);
@@ -1782,6 +1825,7 @@ function _cobrosCombinados(){
         saldo:(r.saldo!=null?r.saldo:r.total)||0,estado:r.estado,_local:true,_pendiente:tienePendiente,_sobrepago:sobrepago});
     }else{
       ya._local=true;
+      if(!ya.id && r.id) ya.id=r.id; // preferir el UUID local → Cobrar abre la remisión local directa
       if(tienePendiente){ya.saldo=(r.saldo!=null?r.saldo:ya.saldo);ya.estado=r.estado;ya._pendiente=true;}
       if(sobrepago)ya._sobrepago=true;
     }
@@ -2032,19 +2076,18 @@ async function verHist(){
   }
 }
 function _renderHistCombinado(q){
-  // IDs locales para saber cuáles tenemos completos
-  const localMap=new Map(remisiones.map(r=>[String(r.id||r.folio),r]));
-  // Mezcla: servidor primero, eliminar duplicados con locales
+  // Mezcla: locales (datos completos) primero, luego servidor, deduplicando por la
+  // MISMA clave que cobros (_claveRem) → folio definitivo compartido, no el UUID local.
   const combinados=[];
   const vistos=new Set();
   // Primero los locales (tienen datos completos)
   for(const r of remisiones.slice(0,15)){
-    const k=String(r.id||r.folio);
+    const k=_claveRem(r);
     if(!vistos.has(k)){vistos.add(k);combinados.push({...r,_esLocal:true});}
   }
   // Luego los del servidor que no están en local
   for(const s of _histServidor){
-    const k=String(s.id||s.folio);
+    const k=_claveRem(s);
     if(!vistos.has(k)){
       vistos.add(k);
       combinados.push({id:s.id,folio:s.folio,cliente:s.cliente,fecha:s.fecha,
@@ -2367,10 +2410,19 @@ function loadGSCache(){
   const cp=localStorage.getItem('gs_cp'),cc=localStorage.getItem('gs_cc');
   if(cp)try{PRODUCTOS=JSON.parse(cp).map(p=>({...p,iva:ivaGlobal}));}catch(e){}
   if(cc)try{CLIENTES=JSON.parse(cc);}catch(e){}
-  // Siempre usar URL_CATALOGOS hardcodeada — no requiere configuración manual
-  const url=URL_CATALOGOS;
-  if(!localStorage.getItem('gs_url'))localStorage.setItem('gs_url',url);
-  if(navigator.onLine)setTimeout(async()=>{try{
+  if(!localStorage.getItem('gs_url'))localStorage.setItem('gs_url',URL_CATALOGOS);
+  // La actualización del catálogo la dispara el heartbeat por 'catVer' (solo descarga
+  // cuando cambiaron los precios en el ERP). Aquí solo sembramos si aún no hay caché (1ª vez).
+  if(navigator.onLine && (!cp||!cc)) setTimeout(()=>refrescarCatalogo(true),2000);
+}
+
+// Descarga catálogo+clientes y refresca la caché local. Se llama: (a) la 1ª vez que no hay
+// caché, y (b) cuando el heartbeat detecta que cambió 'catVer' (subiste precios desde Excel).
+// Así los precios se actualizan solos —incluso con la app abierta— sin bajar el catálogo
+// entero en cada apertura (ahorro de datos).
+async function refrescarCatalogo(silencioso){
+  const url=URL_CATALOGOS; if(!url||!navigator.onLine)return;
+  try{
     const [rP,rC]=await Promise.all([fetch(url+'?tipo=catalogo'),fetch(url+'?tipo=clientes')]);
     if(!rP.ok||!rC.ok)return;
     const jP=await rP.json(),jC=await rC.json();
@@ -2380,7 +2432,8 @@ function loadGSCache(){
     localStorage.setItem('gs_cp',JSON.stringify(PRODUCTOS));
     localStorage.setItem('gs_cc',JSON.stringify(CLIENTES));
     localStorage.setItem('gs_sync',new Date().toLocaleString('es-MX'));
-  }catch(e){}},2000);
+    if(!silencioso)toast('Catálogo actualizado ✓ ('+PRODUCTOS.length+' productos)','ok');
+  }catch(e){}
 }
 
 
@@ -3267,6 +3320,17 @@ async function registrarTodo(){
   const sn=snap();
   const activos=sn.items.filter(i=>(+i.qty>0)&&(+i.precio>0));
   if(!activos.length){toast('Agrega al menos un producto con cantidad y precio','err');return;}
+
+  // D) Aviso: productos con cantidad pero SIN precio → NO se cobran (se excluyen del total).
+  // Evita regalar producto por un precio en $0 (catálogo desactualizado o dato faltante).
+  const sinPrecio=sn.items.filter(i=>(+i.qty>0)&&!(+i.precio>0));
+  if(sinPrecio.length){
+    const lista=sinPrecio.map(i=>'• '+((i.clave||i.desc||'(sin nombre)'))+' ×'+(+i.qty)).join('\n');
+    if(!confirm('⚠️ Estos productos tienen CANTIDAD pero SIN PRECIO y NO se cobrarán:\n\n'+lista+'\n\n¿Registrar de todas formas?')) {
+      const _b=document.getElementById('btnRegistrar'); if(_b){_b.disabled=false;_b.innerHTML='✅ REGISTRAR';}
+      return;
+    }
+  }
 
   const btn=document.getElementById('btnRegistrar');
   if(btn){btn.disabled=true;btn.innerHTML='⏳ Registrando…';}
