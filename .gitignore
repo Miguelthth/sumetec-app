@@ -1,5 +1,9 @@
 # Secretos — NUNCA subir a GitHub
 TOKEN_SECRETO.txt
+# apps_script.js es BACKEND (se pega en script.google.com) y contiene el API_TOKEN.
+# NUNCA debe ir al repo público de GitHub Pages.
+apps_script.js
+apps_script*.js
 
 # Backups automáticos
 *.BACKUP_*.html

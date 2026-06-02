@@ -326,6 +326,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   <div class="tb-div"></div>
   <button class="btn btn-o" onclick="abrirEmpresa()">🏢 Mi empresa</button>
   <button class="btn btn-o" onclick="abrirCatalogos()">⚙️ Catálogos</button>
+  <button class="btn btn-o" onclick="abrirToken()" id="btnTokenTab">🔑 Token</button>
   <div class="tb-div"></div>
   <button class="btn btn-g" onclick="window.print()">🖨️ Imprimir</button>
   <button class="btn btn-p" id="btnDescargarPDF" onclick="descargarPDFSiRegistrado()" style="opacity:.45;cursor:not-allowed" disabled>🔒 PDF</button>
@@ -581,6 +582,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       style="margin-top:10px;width:100%;padding:13px;background:var(--green-light);color:var(--green);border:2px solid #a7f3d0;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
       📋 Ver remisión completa (items, PDF, historial)
     </button>
+    <div id="prObsPreview" style="display:none;margin-top:10px;background:#F3F5F7;border-radius:8px;padding:10px 12px;font-size:11px;color:#444;white-space:pre-line;border-left:3px solid var(--green);max-height:90px;overflow-y:auto;line-height:1.45">
+      <span style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Lo que verá el PDF ↓</span>
+      <span id="prObsText"></span>
+    </div>
   </div>
 </div>
 
@@ -641,9 +646,24 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <div class="fg"><label>☁️ URL del Apps Script — Drive &amp; Folios</label><input id="drive_url" type="text" placeholder="https://script.google.com/macros/s/.../exec" oninput="guardarDriveUrl()"><div style="font-size:11px;color:var(--muted);margin-top:3px">Guarda PDFs en Drive y sincroniza el contador de folios</div></div>
     <div id="driveStatus" style="font-size:12px;color:var(--muted);min-height:16px"></div>
   </div>
-  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-    <div class="fg"><label>🔑 Token de seguridad</label><input id="api_token_input" type="text" placeholder="Ej: MiTokenSecreto2026" oninput="guardarApiToken()"><div style="font-size:11px;color:var(--muted);margin-top:3px">Debe coincidir con <code>API_TOKEN</code> en tu <code>apps_script.js</code>. Nunca lo pongas en el código fuente.</div></div>
-    <div id="tokenStatus" style="font-size:12px;min-height:16px"></div>
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)">🔑 El <strong>token de seguridad</strong> ahora está en su propio botón <strong>🔑 Token</strong> (arriba en la barra).</div>
+</div></div>
+
+<!-- Modal dedicado: Token de seguridad -->
+<div class="ov" id="ovToken"><div class="modal" style="max-width:440px">
+  <div class="modal-hd"><div class="modal-title">🔑 Token de seguridad</div><button class="mx" onclick="closeOv('ovToken')">✕</button></div>
+  <div class="info-box">Es la <strong>contraseña compartida</strong> entre este celular y tu servidor (Apps Script). Sin el token correcto, el servidor rechaza todo. Se guarda solo en <strong>este dispositivo</strong> (localStorage) — nunca viaja en el código.</div>
+  <div class="fg">
+    <label>Pega tu token</label>
+    <input id="api_token_input" type="password" autocomplete="off" spellcheck="false" placeholder="Pega aquí el token" oninput="guardarApiToken()" style="font-family:monospace">
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn" style="flex:1;justify-content:center;background:var(--bg);color:var(--muted)" onclick="_toggleTokenVisible()" id="btnVerToken">👁️ Ver</button>
+      <button class="btn" style="flex:1;justify-content:center;background:var(--bg);color:var(--muted)" onclick="_pegarToken()">📋 Pegar</button>
+    </div>
+  </div>
+  <div id="tokenStatus" style="font-size:12.5px;min-height:18px;margin-top:6px"></div>
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)">
+    Debe coincidir <strong>exactamente</strong> con el token que configuraste en el Apps Script (Propiedades del script). Si lo cambias en el servidor, actualízalo aquí en cada celular.
   </div>
 </div></div>
 
@@ -869,7 +889,7 @@ function actualizarPanelConexion(){
     if(_pagos)partes.push(_pagos+' pago'+(    _pagos>1?'s':''));
     if(_pdfs)partes.push(_pdfs+' PDF'+(       _pdfs>1?'s':''));
     const tokenHint=!API_TOKEN
-      ? ' · <span style="text-decoration:underline;cursor:pointer;font-weight:800" onclick="abrirCatalogos()">⚠️ Sin token — configúralo aquí</span>'
+      ? ' · <span style="text-decoration:underline;cursor:pointer;font-weight:800" onclick="abrirToken()">⚠️ Sin token — configúralo aquí</span>'
       : '';
     msg.innerHTML='🔄 <b>Enviando: '+partes.join(', ')+'</b>'+tokenHint+' — Los datos no se perderán aunque cierres la app.';
   } else {
@@ -891,7 +911,7 @@ async function heartbeat(){
   }catch(e){setOnlineState(false);}
 }
 
-function startHeartbeat(){heartbeat();_hbTimer=setInterval(heartbeat,30000);}
+function startHeartbeat(){heartbeat();_hbTimer=setInterval(heartbeat,10000);}
 window.addEventListener('online',()=>{heartbeat();setTimeout(procesarColaRemisiones,1500);setTimeout(procesarCola,2100);setTimeout(procesarColaPDF,2700);});
 window.addEventListener('offline',()=>setOnlineState(false));
 
@@ -965,7 +985,7 @@ const URL_CATALOGOS='https://script.google.com/macros/s/AKfycbybfhE5EGjP93myfFv-
 const URL_DRIVE='https://script.google.com/macros/s/AKfycbybfhE5EGjP93myfFv-DcE22CPAt-cjbXVijcmWW0RGQ5cJn5DX9JrGOHLtEYGCor-l/exec';
 // ─────────────────────────────────────────────────────────────────────────────
 // Token de seguridad — leído de localStorage para no quedar en código fuente
-// Configurar en ⚙️ Catálogos → Token de seguridad
+// Configurar en el botón 🔑 Token de la barra
 let API_TOKEN=(localStorage.getItem('api_token')||'').trim();
 (function(){
   const _f=window.fetch.bind(window);
@@ -1014,7 +1034,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   _limpiarMemoriaAntigua();
   reconciliarPendientes();
   // Avisar si el token no está configurado
-  setTimeout(()=>{if(!API_TOKEN)toast('⚠️ Sin token — abre ⚙️ Catálogos → Token de seguridad antes de operar','warn',12000);},1500);
+  setTimeout(()=>{if(!API_TOKEN)toast('⚠️ Sin token — abre 🔑 Token antes de operar','warn',12000);},1500);
   // Remisiones primero (folio definitivo), después pagos, después PDFs.
   procesarColaRemisiones();
   setTimeout(procesarCola,1200);
@@ -1328,13 +1348,15 @@ function calcTotals(){
   autosave();
 }
 function fmt(n){return'$'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',')}
-function n2l(n){const e=Math.floor(n),d=Math.round((n-e)*100);return words(e)+' PESOS '+String(d).padStart(2,'0')+'/100 MXN'}
+function n2l(n){let e=Math.floor(n),d=Math.round((n-e)*100);if(d>=100){e+=Math.floor(d/100);d=d%100;}return words(e)+' PESOS '+String(d).padStart(2,'0')+'/100 MXN'}
 function words(n){
   if(n===0)return'CERO';
   const U=['','UNO','DOS','TRES','CUATRO','CINCO','SEIS','SIETE','OCHO','NUEVE','DIEZ','ONCE','DOCE','TRECE','CATORCE','QUINCE','DIECISÉIS','DIECISIETE','DIECIOCHO','DIECINUEVE'];
   const D=['','DIEZ','VEINTE','TREINTA','CUARENTA','CINCUENTA','SESENTA','SETENTA','OCHENTA','NOVENTA'];
   const C=['','CIENTO','DOSCIENTOS','TRESCIENTOS','CUATROCIENTOS','QUINIENTOS','SEISCIENTOS','SETECIENTOS','OCHOCIENTOS','NOVECIENTOS'];
+  const V=['VEINTE','VEINTIUNO','VEINTIDÓS','VEINTITRÉS','VEINTICUATRO','VEINTICINCO','VEINTISÉIS','VEINTISIETE','VEINTIOCHO','VEINTINUEVE'];
   if(n<0)return'MENOS '+words(-n);if(n<20)return U[n];
+  if(n<30)return V[n-20];
   if(n<100){const d=Math.floor(n/10),u=n%10;return u===0?D[d]:D[d]+' Y '+U[u]}
   if(n===100)return'CIEN';if(n<1000){const c=Math.floor(n/100),r=n%100;return C[c]+(r>0?' '+words(r):'')}
   if(n<2000)return'MIL'+(n%1000>0?' '+words(n%1000):'');
@@ -1697,11 +1719,14 @@ async function abrirPagoRapido(id, folio, esLocal){
   if(!rem){toast('No se pudo cargar la remisión','err');return;}
   if(rem.estado==='pagado'){toast('Ya está pagada','warn');return;}
 
-  // Llenar el modal
+  // Llenar el modal y resetear estado
   document.getElementById('prFolio').textContent=rem.folio;
   document.getElementById('prCliente').textContent=rem.cliente||'—';
   document.getElementById('prSaldo').textContent=fmt(rem.saldo||0)+' MXN';
   document.getElementById('prMonto').value='';
+  const _vbtn=document.getElementById('btnVerRemisionPago');if(_vbtn)_vbtn.style.display='none';
+  const _cbtn=document.getElementById('btnConfirmarPagoRapido');if(_cbtn){_cbtn.style.display='';_cbtn.disabled=false;_cbtn.textContent='✅ Registrar pago';}
+  const _op=document.getElementById('prObsPreview');if(_op)_op.style.display='none';
   document.getElementById('ovPagoRapido').classList.add('open');
 }
 
@@ -1737,16 +1762,11 @@ async function confirmarPagoRapido(){
       rem.saldo=sd2;rem.estado='abono';
     }
 
-    // Actualizar obs con balance
+    // Actualizar obs con balance usando el helper compartido
     if(rem.data){
-      const lineas=esPagoCompleto?['--- PAGOS ---','PAGADO COMPLETO ✓']:['--- PAGOS ---'];
-      rem.pagos.filter(p=>p.tipo!=='anulacion').forEach(p=>{
-        if(p.tipo==='pago_completo')lineas.push('Pago completo '+fmt(p.monto)+' MXN | '+p.fecha);
-        else lineas.push('Abono '+fmt(p.monto)+' MXN | '+p.fecha+' | Resto: '+fmt(p.saldo_despues)+' MXN');
-      });
-      if(!esPagoCompleto)lineas.push('Saldo pendiente: '+fmt(rem.saldo)+' MXN');
-      rem.data.obs=(rem.data.obs||'').replace(/\n?(?:--- PAGOS ---)[\s\S]*/,'').trimEnd();
-      rem.data.obs+=(rem.data.obs?'\n\n':'')+lineas.join('\n');
+      const bloque=_obsLineasPagos(rem);
+      rem.data.obs=(rem.data.obs||'').replace(/\n?(?:--- BALANCE ---|=== PAGOS ===|--- PAGOS ---)[\s\S]*/,'').trimEnd();
+      rem.data.obs+=bloque?(rem.data.obs?'\n\n':'')+bloque:'';
       rem.data.pagos=[...rem.pagos];
     }
 
@@ -1765,6 +1785,14 @@ async function confirmarPagoRapido(){
     if(_vbtn)_vbtn.style.display='block';
     const _cbtn=document.getElementById('btnConfirmarPagoRapido');
     if(_cbtn)_cbtn.style.display='none';
+
+    // Mostrar preview de lo que contendrá el PDF (obs actualizado)
+    const _op=document.getElementById('prObsPreview');
+    const _ot=document.getElementById('prObsText');
+    if(_op&&_ot&&rem.data&&rem.data.obs){
+      _ot.textContent=rem.data.obs;
+      _op.style.display='block';
+    }
 
     // Mostrar resultado
     if(esPagoCompleto){
@@ -2035,12 +2063,32 @@ function guardarApiToken(){
   localStorage.setItem('api_token',v);
   _actualizarTokenStatus();
 }
+// Modal dedicado del token
+function abrirToken(){
+  const inp=document.getElementById('api_token_input');
+  if(inp){inp.value=localStorage.getItem('api_token')||'';inp.type='password';}
+  const b=document.getElementById('btnVerToken');if(b)b.textContent='👁️ Ver';
+  _actualizarTokenStatus();
+  document.getElementById('ovToken').classList.add('open');
+}
+function _toggleTokenVisible(){
+  const inp=document.getElementById('api_token_input');const b=document.getElementById('btnVerToken');
+  if(!inp)return;
+  if(inp.type==='password'){inp.type='text';if(b)b.textContent='🙈 Ocultar';}
+  else{inp.type='password';if(b)b.textContent='👁️ Ver';}
+}
+async function _pegarToken(){
+  try{
+    const txt=(await navigator.clipboard.readText()||'').trim();
+    if(!txt){toast('El portapapeles está vacío','warn');return;}
+    const inp=document.getElementById('api_token_input');
+    if(inp){inp.value=txt;guardarApiToken();toast('Token pegado ✓','ok');}
+  }catch(e){toast('No se pudo leer el portapapeles — pégalo manualmente','warn',4000);}
+}
 function abrirCatalogos(){
   document.getElementById('gs_url').value=localStorage.getItem('gs_url')||'';
   document.getElementById('gsSync').textContent=localStorage.getItem('gs_sync')||'—';
   document.getElementById('drive_url').value=localStorage.getItem('drive_url')||'';
-  document.getElementById('api_token_input').value=localStorage.getItem('api_token')||'';
-  _actualizarTokenStatus();
   document.getElementById('ovCat').classList.add('open');
 }
 async function conectarGS(){
@@ -2347,7 +2395,7 @@ function descargarPDF(remOverride, forzarDescarga){
     const mm_   = String(now.getMonth()+1).padStart(2,'0');
     const yyyy  = now.getFullYear();
     const folio = (_regen ? remOverride.folio : document.getElementById('folioBadge').innerText.trim()).replace(/[^A-Z0-9\-]/gi,'');
-    const filename = 'REMISION_'+folio+'_'+cli+'_'+dd+mm_+yyyy+'.pdf';
+    const filename = 'REMISION_'+folio+'_'+cli+'.pdf';
     if(!_regen){
       const invalidRows=items.filter(it=>(it.clave||it.desc||(+it.qty>0))&&(!it.clave||!(+it.precio>0)));
       if(invalidRows.length){
@@ -2378,10 +2426,12 @@ function descargarPDF(remOverride, forzarDescarga){
     let obs_        = (_regen ? _d.obs : document.getElementById('obs').value)||'Los precios están sujetos a cambio sin previo aviso.';
     // Lookup local propio — NO referenciar remActivo aquí (se declara ~300 líneas más abajo → TDZ ReferenceError)
     const _remCanc = _regen ? remOverride : remisiones.find(r=>String(r.id)===String(remActualId));
+    let _canc_obs_text=null;
     if(_remCanc && _remCanc.estado==='cancelada'){
       const motCan=_remCanc.motivoCancelacion||'';
       const fecCan=_remCanc.fechaCancelacion||'';
-      obs_='⚠ CANCELADA'+(motCan?' — '+motCan:'')+(fecCan?' | '+fecCan:'')+'\n'+obs_;
+      _canc_obs_text='⚠ CANCELADA'+(motCan?' — '+motCan:'')+(fecCan?' | '+fecCan:'');
+      obs_=obs_+(obs_?'\n':'')+_canc_obs_text;
     }
     const empNombre = empresa.nombre||'SUMETEC';
     const empSlogan = empresa.slogan||'Suministramos soluciones, construimos confianza.';
@@ -2595,8 +2645,18 @@ function descargarPDF(remOverride, forzarDescarga){
     // Observaciones
     doc.setFontSize(7).setFont('helvetica','bold').setTextColor(...MUT);
     doc.text('OBSERVACIONES',ML+5,y+5);
+    const _obsSinCanc=_canc_obs_text
+      ? obs_.slice(0,obs_.lastIndexOf('\n'+_canc_obs_text)).trimEnd()||obs_.replace(_canc_obs_text,'').trimEnd()
+      : obs_;
     doc.setFont('helvetica','normal').setFontSize(7.5).setTextColor(...MUT);
-    doc.text(doc.splitTextToSize(obs_,obsW-10),ML+5,y+10);
+    const _obsNormLines=doc.splitTextToSize(_obsSinCanc,obsW-10);
+    doc.text(_obsNormLines,ML+5,y+10);
+    if(_canc_obs_text){
+      const _obsNormH=_obsNormLines.length*2.8;
+      doc.setFont('helvetica','bold').setFontSize(7.5).setTextColor(192,57,43);
+      doc.text(doc.splitTextToSize(_canc_obs_text,obsW-10),ML+5,y+10+_obsNormH);
+      doc.setFont('helvetica','normal').setTextColor(...MUT);
+    }
 
     // Resumen
     const rx2=ML+obsW;
@@ -3103,15 +3163,18 @@ async function confirmarCancelacion(){
   const motivo=document.getElementById('cancelarMotivo')?.value?.trim();
   if(!motivo){toast('Escribe el motivo de cancelación','err');return;}
   let r=remisiones.find(x=>String(x.id)===String(_cancelarId));
-  // Si no está en local (es del servidor), crear una entrada mínima para cancelar
+  // Si no está en local (es del servidor), crear entrada mínima y añadirla a remisiones para que persista
   if(!r&&_cancelarFolio){
     const s=_histServidor.find(x=>x.folio===_cancelarFolio||String(x.id)===String(_cancelarId));
-    if(s) r={id:s.id||_cancelarId,folio:s.folio,cliente:s.cliente,total:s.total,estado:s.estado,_esServidor:true};
+    if(s){ r={id:s.id||_cancelarId,folio:s.folio,cliente:s.cliente,total:s.total,saldo:s.saldo||0,estado:s.estado,pagos:[],_esServidor:true}; remisiones.push(r); }
   }
   if(!r){toast('Remisión no encontrada','err');return;}
   const ahora=new Date();
   r.estado='cancelada';r.motivoCancelacion=motivo;r.sincronizado=false;
   r.fechaCancelacion=ahora.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+ahora.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+  // Actualizar caché del servidor para que la lista muestre "cancelada" de inmediato (sin esperar heartbeat)
+  const _sIdx=_histServidor.findIndex(x=>x.folio===r.folio||String(x.id)===String(r.id));
+  if(_sIdx>=0)_histServidor[_sIdx].estado='cancelada';
   persistirRemisiones();
   closeOv('ovCancelar');_cancelarId=null;_cancelarFolio=null;
   if(remActualId===r.id)renderPagos();
@@ -3128,36 +3191,40 @@ async function confirmarCancelacion(){
   if(r.data&&window.jspdf&&isOnline){
     setTimeout(()=>descargarPDF(r),500);
   }
+  // Forzar refresco desde servidor en 3s para confirmar sincronización
+  setTimeout(bajarCobros, 3000);
 }
 
+// Construye el bloque de pagos para obs. Retorna string o null si no hay nada que mostrar.
+// El total ya está visible en el encabezado del documento — aquí solo va el historial de cobros.
+function _obsLineasPagos(r){
+  const anulados=new Set((r.pagos||[]).filter(p=>p.tipo==='anulacion').map(p=>p.pago_ref));
+  const pagosValidos=(r.pagos||[]).filter(p=>p.tipo!=='anulacion'&&!anulados.has(p.uuid));
+  const anulaciones=(r.pagos||[]).filter(p=>p.tipo==='anulacion');
+  if(!pagosValidos.length&&!anulaciones.length&&r.estado!=='pagado') return null;
+  const lineas=['--- PAGOS ---'];
+  pagosValidos.forEach(p=>{
+    lineas.push('Abono '+fmt(p.monto)+' MXN | '+p.fecha);
+    if(p.tipo!=='pago_completo'){
+      // Mostrar saldo después de cada abono parcial
+      const sd=p.saldo_despues!==undefined?p.saldo_despues:0;
+      if(sd>0.001) lineas.push('Saldo pendiente: '+fmt(sd)+' MXN');
+    }
+  });
+  anulaciones.forEach(p=>{
+    lineas.push('[Anulado] '+fmt(p.monto_ref||0)+' MXN ('+p.razon+') | '+p.fecha);
+  });
+  if(r.estado==='pagado') lineas.push('PAGADO COMPLETO ✓');
+  return lineas.join('\n');
+}
 function updateObsBalance(r){
   const ta=document.getElementById('obs');
   if(!ta)return;
   const _syncData=()=>{if(r&&r.data)r.data.obs=ta.value;};
   let txt=ta.value.replace(/\n?(?:--- BALANCE ---|=== PAGOS ===|--- PAGOS ---)[\s\S]*/,'').trimEnd();
-  const anulados=new Set((r.pagos||[]).filter(p=>p.tipo==='anulacion').map(p=>p.pago_ref));
-  const pagosValidos=(r.pagos||[]).filter(p=>p.tipo!=='anulacion'&&!anulados.has(p.uuid));
-  const anulaciones=(r.pagos||[]).filter(p=>p.tipo==='anulacion');
-  const lineas=['--- PAGOS ---'];
-  pagosValidos.forEach(p=>{
-    if(p.tipo==='pago_completo')
-      lineas.push('Pago completo '+fmt(p.monto)+' MXN | '+p.fecha);
-    else
-      lineas.push('Abono '+fmt(p.monto)+' MXN | '+p.fecha+' | Resto: '+fmt(p.saldo_despues)+' MXN');
-  });
-  anulaciones.forEach(p=>{
-    lineas.push('[Anulado] '+fmt(p.monto_ref||0)+' MXN ('+p.razon+') | '+p.fecha);
-  });
-  if(r.estado==='pagado'){
-    lineas.push('PAGADO COMPLETO ✓');
-  } else if((r.saldo||0)>0){
-    // Siempre mostrar saldo pendiente, aunque no haya pagos aún
-    lineas.push('Saldo pendiente: '+fmt(r.saldo)+' MXN');
-  }
-  // Si el bloque solo tiene el encabezado y el saldo (sin pagos), simplificarlo
-  const soloSaldo=lineas.length===2&&!pagosValidos.length&&!anulaciones.length;
-  ta.value=txt+(txt?'\n\n':'')+(soloSaldo?'Saldo: '+fmt(r.saldo)+' MXN':lineas.join('\n'));
-  _syncData(); // sincronizar rem.data.obs
+  const bloque=_obsLineasPagos(r);
+  ta.value=bloque?txt+(txt?'\n\n':'')+bloque:txt;
+  _syncData();
   autosave();
 }
 
@@ -3320,7 +3387,7 @@ function enviarPagoConCola(r,pago){
 }
 function _alertarNoAutorizado(d){
   if(d&&d.error&&String(d.error).includes('no autorizado'))
-    toast('⛔ Token incorrecto — abre ⚙️ Catálogos → Token de seguridad y corrígelo','err',10000);
+    toast('⛔ Token incorrecto — abre 🔑 Token y corrígelo','err',10000);
 }
 function _enviarPago(r,pago){
   const url=getScriptUrl();if(!url)return;
