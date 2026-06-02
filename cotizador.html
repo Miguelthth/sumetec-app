@@ -1,4 +1,20 @@
 ﻿<!DOCTYPE html>
+<!--
+═══════════════════════════════════════════════════════════════════════════
+  📑 ÍNDICE — QUÉ EDITAR Y DÓNDE   (archivo: cotizador.html)
+  Para saltar a una sección: pulsa Ctrl+F y pega el texto de "buscar".
+───────────────────────────────────────────────────────────────────────────
+  🏢 DATOS DE TU EMPRESA (nombre, RFC, tel, email, web, slogan, vigencia)
+        buscar →  EMPRESA_DEFAULT
+  🔗 URL DEL SERVIDOR (Apps Script) — cámbiala al republicar
+        buscar →  URL_SERVIDOR
+  🔑 TOKEN DE SEGURIDAD — NO se edita aquí.
+        Se pega en la app: botón 🔑 Token → 🔌 Conectar y validar
+───────────────────────────────────────────────────────────────────────────
+  ⚠️ El resto del código NO necesita tocarse para el uso normal.
+  🛟 Antes de cambios grandes hay copias de seguridad: *.BACKUP_*.html
+═══════════════════════════════════════════════════════════════════════════
+-->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -426,6 +442,16 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     </div>
   </div>
   <button class="btn btn-p" style="width:100%;justify-content:center;padding:11px" onclick="guardarEmpresa()">💾 Guardar datos de empresa</button>
+
+  <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+    <div style="font-weight:700;font-size:13px;margin-bottom:4px">🛟 Respaldo de datos</div>
+    <div class="info-box" style="margin-bottom:10px">Descarga una copia de TODO (cotizaciones, borrador, colas pendientes y empresa) en un archivo. Si cambias de celular o se borra algo, lo restauras. El token NO se incluye.</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-o" style="flex:1;justify-content:center" onclick="exportarRespaldo()">⬇️ Exportar</button>
+      <button class="btn btn-o" style="flex:1;justify-content:center" onclick="document.getElementById('fileRestaurar').click()">📂 Restaurar</button>
+    </div>
+    <input type="file" id="fileRestaurar" accept="application/json,.json" style="display:none" onchange="importarRespaldo(this)">
+  </div>
 </div></div>
 
 <div class="ov" id="ovCat"><div class="modal"><div class="modal-hd"><div class="modal-title">⚙️ Catálogos Google Sheets</div><button class="mx" onclick="closeOv('ovCat')">✕</button></div>
@@ -452,6 +478,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <button class="btn" style="flex:1;justify-content:center;background:var(--bg);color:var(--muted)" onclick="_toggleTokenVisible()" id="btnVerToken">👁️ Ver</button>
       <button class="btn" style="flex:1;justify-content:center;background:var(--bg);color:var(--muted)" onclick="_pegarToken()">📋 Pegar</button>
     </div>
+    <button class="btn btn-p" style="width:100%;justify-content:center;padding:11px;margin-top:8px" onclick="validarToken()" id="btnConectarToken">🔌 Conectar y validar</button>
   </div>
   <div id="tokenStatus" style="font-size:12.5px;min-height:18px;margin-top:6px"></div>
   <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)">
@@ -517,10 +544,15 @@ const EMPRESA_DEFAULT={                                                         
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
 };
-// Una sola URL para todo (catálogos + Drive + folios + cotizaciones).
-// Apunta al Apps Script que tiene el apps_script.js completo y actualizado.
-const URL_CATALOGOS='https://script.google.com/macros/s/AKfycbybfhE5EGjP93myfFv-DcE22CPAt-cjbXVijcmWW0RGQ5cJn5DX9JrGOHLtEYGCor-l/exec';
-const URL_DRIVE='https://script.google.com/macros/s/AKfycbybfhE5EGjP93myfFv-DcE22CPAt-cjbXVijcmWW0RGQ5cJn5DX9JrGOHLtEYGCor-l/exec';
+// ╔════════════════════════════════════════════════════════════════╗
+// ║  ⚙️ CONEXIÓN AL SERVIDOR — pega aquí la URL del Apps Script.     ║
+// ║  Una sola URL para todo (catálogos + Drive + folios + cobros).  ║
+// ║  ⚠️ Cambia cada vez que republicas (Implementar → Nueva versión).║
+// ║  🔑 El TOKEN no va aquí: se pega en el botón 🔑 de cada celular. ║
+// ╚════════════════════════════════════════════════════════════════╝
+const URL_SERVIDOR='https://script.google.com/macros/s/AKfycbybfhE5EGjP93myfFv-DcE22CPAt-cjbXVijcmWW0RGQ5cJn5DX9JrGOHLtEYGCor-l/exec';
+const URL_CATALOGOS=URL_SERVIDOR;
+const URL_DRIVE=URL_SERVIDOR;
 // Token de seguridad — leído de localStorage para no quedar en código fuente
 // Configurar en el botón 🔑 Token de la barra
 let API_TOKEN=(localStorage.getItem('api_token')||'').trim();
@@ -818,7 +850,7 @@ function upd(input){
 }
 function imp(it){return(+it.qty||0)*(+it.precio||0)}
 function fmtPrecio(n){return n===''||n===null||n===undefined?'':parseFloat(n).toFixed(2)}
-function esc(v){return v==null?'':String(v).replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function esc(v){return v==null?'':String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 
 let _ppCache={};
 function showPP(input){
@@ -848,7 +880,7 @@ function toggleCPanel(){
 function filtClientes(q){renderCList(CLIENTES.filter(c=>c.nombre.toLowerCase().includes(q.toLowerCase())||c.rfc.toLowerCase().includes(q.toLowerCase())))}
 function renderCList(list){
   document.getElementById('cList').innerHTML=list.length
-    ?list.map(c=>`<div class="sp-item" onclick="selCliente(${CLIENTES.indexOf(c)})"><div class="sp-name">${c.nombre}</div><div class="sp-sub">${c.rfc||'Sin RFC'}</div></div>`).join('')
+    ?list.map(c=>`<div class="sp-item" onclick="selCliente(${CLIENTES.indexOf(c)})"><div class="sp-name">${esc(c.nombre)}</div><div class="sp-sub">${esc(c.rfc||'Sin RFC')}</div></div>`).join('')
     :'<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">Sin resultados</div>';
 }
 function selCliente(idx){
@@ -942,7 +974,7 @@ function filtRems(q){const lq=q.toLowerCase();renderRems(remisiones.filter(r=>r.
 function renderRems(list){
   const div=document.getElementById('remList');
   if(!list.length){div.innerHTML='<div class="es"><div class="es-ic">📋</div><div>Sin remisiones</div></div>';return}
-  div.innerHTML=list.map(r=>`<div class="rem-i" onclick="loadRem(${r.id})"><div style="flex:1"><div class="rem-fo">${r.folio}</div><div class="rem-cl">${r.cliente} · ${r.fecha}</div></div><div class="rem-to">${fmt(r.total)} MXN</div><button class="rem-del" onclick="event.stopPropagation();delRem(${r.id})">✕</button></div>`).join('');
+  div.innerHTML=list.map(r=>`<div class="rem-i" onclick="loadRem(${r.id})"><div style="flex:1"><div class="rem-fo">${r.folio}</div><div class="rem-cl">${esc(r.cliente)} · ${r.fecha}</div></div><div class="rem-to">${fmt(r.total)} MXN</div><button class="rem-del" onclick="event.stopPropagation();delRem(${r.id})">✕</button></div>`).join('');
 }
 function loadRem(id){
   const r=remisiones.find(x=>x.id===id);if(!r)return;
@@ -1006,7 +1038,67 @@ function parseCSV(text){
 function _actualizarTokenStatus(){
   const t=API_TOKEN;
   const el=document.getElementById('tokenStatus');if(!el)return;
-  el.innerHTML=t?'<span style="color:var(--green)">✓ Token configurado</span>':'<span style="color:#C0392B">⚠️ Sin token — las llamadas al servidor serán rechazadas</span>';
+  el.innerHTML=t?'<span style="color:var(--muted)">💾 Token guardado (sin validar) — pulsa <b>🔌 Conectar y validar</b> para comprobar si es el correcto.</span>':'<span style="color:#C0392B">⚠️ Sin token — las llamadas al servidor serán rechazadas</span>';
+}
+// Pregunta al servidor si el token escrito es el correcto (endpoint ping).
+async function validarToken(){
+  const v=(document.getElementById('api_token_input').value||'').trim();
+  const el=document.getElementById('tokenStatus');
+  const btn=document.getElementById('btnConectarToken');
+  if(!v){ if(el)el.innerHTML='<span style="color:#C0392B">⚠️ Escribe o pega un token primero.</span>'; return; }
+  guardarApiToken(); // guarda lo que el usuario escribió antes de probar
+  if(btn){btn.disabled=true;btn.textContent='⏳ Conectando…';}
+  if(el)el.innerHTML='<span style="color:var(--muted)">🔌 Conectando con el servidor…</span>';
+  try{
+    const url=getScriptUrl()+'?tipo=ping&token='+encodeURIComponent(v);
+    const r=await fetch(url);
+    const j=await r.json();
+    if(j&&j.ok){
+      if(el)el.innerHTML='<span style="color:var(--green);font-weight:800">✅ Token CORRECTO — conectado al servidor.</span>';
+      toast('Token válido ✓','ok');
+    }else{
+      if(el)el.innerHTML='<span style="color:#C0392B;font-weight:800">❌ Token INCORRECTO — el servidor lo rechazó.</span>';
+      toast('Token incorrecto','warn',4000);
+    }
+  }catch(e){
+    if(el)el.innerHTML='<span style="color:#E67E22;font-weight:800">⚠️ Sin conexión — revisa tu internet o la URL del servidor.</span>';
+    toast('No se pudo conectar','warn',4000);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='🔌 Conectar y validar';}
+  }
+}
+
+// ── #7 Respaldo: exportar/restaurar TODO el estado local (recuperación ante desastre) ──
+const _CLAVES_RESPALDO=['s_rems','s_empresa','s_fn','s_draft','cola_cot','device_id','gs_cc','gs_cp'];
+function exportarRespaldo(){
+  const out={_app:'SUMETEC-cotizador',_fecha:new Date().toISOString(),_version:1,datos:{}};
+  _CLAVES_RESPALDO.forEach(k=>{const v=localStorage.getItem(k);if(v!==null)out.datos[k]=v;});
+  const blob=new Blob([JSON.stringify(out)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='RESPALDO_SUMETEC_cotizador_'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+  toast('Respaldo descargado ✓','ok');
+}
+function importarRespaldo(input){
+  const f=input&&input.files&&input.files[0];if(!f){return;}
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    let obj;
+    try{obj=JSON.parse(ev.target.result);}catch(_){toast('Archivo dañado — no es un respaldo válido','err',5000);input.value='';return;}
+    if(!obj||obj._app!=='SUMETEC-cotizador'||!obj.datos){toast('Ese archivo no es un respaldo de Cotizador','err',5000);input.value='';return;}
+    try{
+      const prev={}; _CLAVES_RESPALDO.forEach(k=>{const v=localStorage.getItem(k);if(v!==null)prev[k]=v;});
+      localStorage.setItem('_respaldo_antes_de_restaurar',JSON.stringify({fecha:new Date().toISOString(),datos:prev}));
+    }catch(_){}
+    let n=0;
+    Object.keys(obj.datos).forEach(k=>{try{localStorage.setItem(k,obj.datos[k]);n++;}catch(_){}});
+    input.value='';
+    toast('Respaldo restaurado ('+n+' bloques) ✓ — recargando…','ok',2500);
+    setTimeout(()=>location.reload(),1600);
+  };
+  reader.readAsText(f);
 }
 function guardarApiToken(){
   const v=(document.getElementById('api_token_input').value||'').trim();

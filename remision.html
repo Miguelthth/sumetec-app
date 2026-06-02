@@ -1,4 +1,20 @@
 ﻿<!DOCTYPE html>
+<!--
+═══════════════════════════════════════════════════════════════════════════
+  📑 ÍNDICE — QUÉ EDITAR Y DÓNDE   (archivo: remision.html)
+  Para saltar a una sección: pulsa Ctrl+F y pega el texto de "buscar".
+───────────────────────────────────────────────────────────────────────────
+  🏢 DATOS DE TU EMPRESA (nombre, RFC, tel, email, web, slogan)
+        buscar →  EMPRESA_DEFAULT
+  🔗 URL DEL SERVIDOR (Apps Script) — cámbiala al republicar
+        buscar →  URL_SERVIDOR
+  🔑 TOKEN DE SEGURIDAD — NO se edita aquí.
+        Se pega en la app: botón 🔑 Token → 🔌 Conectar y validar
+───────────────────────────────────────────────────────────────────────────
+  ⚠️ El resto del código NO necesita tocarse para el uso normal.
+  🛟 Antes de cambios grandes hay copias de seguridad: *.BACKUP_*.html
+═══════════════════════════════════════════════════════════════════════════
+-->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -634,6 +650,16 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     </div>
   </div>
   <button class="btn btn-p" style="width:100%;justify-content:center;padding:11px" onclick="guardarEmpresa()">💾 Guardar datos de empresa</button>
+
+  <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+    <div style="font-weight:700;font-size:13px;margin-bottom:4px">🛟 Respaldo de datos</div>
+    <div class="info-box" style="margin-bottom:10px">Descarga una copia de TODO (remisiones, cobros, colas pendientes y empresa) en un archivo. Si cambias de celular o se borra algo, lo restauras. El token NO se incluye (se vuelve a pegar).</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-o" style="flex:1;justify-content:center" onclick="exportarRespaldo()">⬇️ Exportar</button>
+      <button class="btn btn-o" style="flex:1;justify-content:center" onclick="document.getElementById('fileRestaurar').click()">📂 Restaurar</button>
+    </div>
+    <input type="file" id="fileRestaurar" accept="application/json,.json" style="display:none" onchange="importarRespaldo(this)">
+  </div>
 </div></div>
 
 <div class="ov" id="ovCat"><div class="modal"><div class="modal-hd"><div class="modal-title">⚙️ Catálogos Google Sheets</div><button class="mx" onclick="closeOv('ovCat')">✕</button></div>
@@ -660,6 +686,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <button class="btn" style="flex:1;justify-content:center;background:var(--bg);color:var(--muted)" onclick="_toggleTokenVisible()" id="btnVerToken">👁️ Ver</button>
       <button class="btn" style="flex:1;justify-content:center;background:var(--bg);color:var(--muted)" onclick="_pegarToken()">📋 Pegar</button>
     </div>
+    <button class="btn btn-p" style="width:100%;justify-content:center;padding:11px;margin-top:8px" onclick="validarToken()" id="btnConectarToken">🔌 Conectar y validar</button>
   </div>
   <div id="tokenStatus" style="font-size:12.5px;min-height:18px;margin-top:6px"></div>
   <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)">
@@ -899,6 +926,7 @@ function actualizarPanelConexion(){
 function actualizarUltimaSync(){actualizarPanelConexion();}
 
 async function heartbeat(){
+  _chequearAlmacenamiento(); // #6: avisa si la memoria del navegador se está llenando
   const url=getScriptUrl();
   if(!url){setOnlineState(navigator.onLine);return;}
   try{
@@ -907,12 +935,12 @@ async function heartbeat(){
     const r=await fetch(url+'?tipo=ping',{signal:ctrl.signal,cache:'no-store'});
     clearTimeout(t);
     setOnlineState(r.ok||r.status===0);
-    if(isOnline)bajarCobros(); // refresca la lista compartida cada ~30s
+    if(isOnline){procesarColaElim();bajarCobros();} // procesa borrados pendientes y refresca la lista compartida
   }catch(e){setOnlineState(false);}
 }
 
 function startHeartbeat(){heartbeat();_hbTimer=setInterval(heartbeat,10000);}
-window.addEventListener('online',()=>{heartbeat();setTimeout(procesarColaRemisiones,1500);setTimeout(procesarCola,2100);setTimeout(procesarColaPDF,2700);});
+window.addEventListener('online',()=>{heartbeat();setTimeout(procesarColaElim,900);setTimeout(procesarColaRemisiones,1500);setTimeout(procesarCola,2100);setTimeout(procesarColaPDF,2700);});
 window.addEventListener('offline',()=>setOnlineState(false));
 
 // ── Cobros compartidos: caché desde Sheets (fuente única para ambos celulares) ──
@@ -979,10 +1007,15 @@ const EMPRESA_DEFAULT={                                                         
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
 };
-// Una sola URL para todo (catálogos + Drive + folios + remisiones + cobros).
-// Apunta al Apps Script que tiene el apps_script.js completo y actualizado.
-const URL_CATALOGOS='https://script.google.com/macros/s/AKfycbybfhE5EGjP93myfFv-DcE22CPAt-cjbXVijcmWW0RGQ5cJn5DX9JrGOHLtEYGCor-l/exec';
-const URL_DRIVE='https://script.google.com/macros/s/AKfycbybfhE5EGjP93myfFv-DcE22CPAt-cjbXVijcmWW0RGQ5cJn5DX9JrGOHLtEYGCor-l/exec';
+// ╔════════════════════════════════════════════════════════════════╗
+// ║  ⚙️ CONEXIÓN AL SERVIDOR — pega aquí la URL del Apps Script.     ║
+// ║  Una sola URL para todo (catálogos + Drive + folios + cobros).  ║
+// ║  ⚠️ Cambia cada vez que republicas (Implementar → Nueva versión).║
+// ║  🔑 El TOKEN no va aquí: se pega en el botón 🔑 de cada celular. ║
+// ╚════════════════════════════════════════════════════════════════╝
+const URL_SERVIDOR='https://script.google.com/macros/s/AKfycbybfhE5EGjP93myfFv-DcE22CPAt-cjbXVijcmWW0RGQ5cJn5DX9JrGOHLtEYGCor-l/exec';
+const URL_CATALOGOS=URL_SERVIDOR;
+const URL_DRIVE=URL_SERVIDOR;
 // ─────────────────────────────────────────────────────────────────────────────
 // Token de seguridad — leído de localStorage para no quedar en código fuente
 // Configurar en el botón 🔑 Token de la barra
@@ -1174,6 +1207,22 @@ function _dequeuePDF(key){
   const cola=leerSeguro('cola_pdf',[]);
   guardarSeguro('cola_pdf',JSON.stringify(cola.filter(e=>String(e.id||e.folio)!==String(key))));
 }
+// ── #6 Aviso proactivo de almacenamiento (avisa ANTES de chocar con el límite ~5MB) ──
+// El código ya evita guardar PDFs base64 (solo metadata), así que el riesgo es bajo;
+// este guardia avisa por si las remisiones sin sincronizar se acumulan demasiado.
+function _bytesLocalStorage(){
+  let t=0; try{ for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);const v=localStorage.getItem(k)||'';t+=k.length+v.length;} }catch(_){}
+  return t*2; // ~2 bytes por carácter (UTF-16)
+}
+let _avisoAlmacenamiento=false;
+function _chequearAlmacenamiento(){
+  const usado=_bytesLocalStorage(), LIMITE=5*1024*1024;
+  if(usado>LIMITE*0.8 && !_avisoAlmacenamiento){
+    _avisoAlmacenamiento=true;
+    toast('⚠️ Memoria del navegador casi llena ('+(Math.round(usado/1024/1024*10)/10)+' MB). Conéctate para sincronizar lo pendiente, o exporta un respaldo (🏢 Mi empresa → Exportar).','warn',9000);
+  }
+  if(usado<LIMITE*0.6) _avisoAlmacenamiento=false; // se re-arma si baja
+}
 // Si hay un PDF en cola para esta remisión, alinea su folio al definitivo.
 function _encolarPDFsiHace(rem){
   const cola=leerSeguro('cola_pdf',[]);
@@ -1234,7 +1283,7 @@ function upd(input){
 }
 function imp(it){return(+it.qty||0)*(+it.precio||0)}
 function fmtPrecio(n){return n===''||n===null||n===undefined?'':parseFloat(n).toFixed(2)}
-function esc(v){return v==null?'':String(v).replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function esc(v){return v==null?'':String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 
 // ── Popup global de productos (fixed, no se recorta en la tabla) ──
 let _ppRowId=null,_ppResultados=[];
@@ -1304,10 +1353,10 @@ function renderCList(list){
   document.getElementById('cList').innerHTML=list.length
     ?list.slice(0,30).map(c=>{
         const idx=CLIENTES.indexOf(c);
-        const tel=c.tel?'<span style="color:var(--muted)"> · '+c.tel+'</span>':'';
+        const tel=c.tel?'<span style="color:var(--muted)"> · '+esc(c.tel)+'</span>':'';
         return`<div class="sp-item" style="flex-direction:column;align-items:flex-start;padding:5px 12px;gap:1px" onclick="selCliente(${idx})">
-          <div class="sp-name">${c.nombre}</div>
-          <div class="sp-sub">${c.rfc||''}${tel}</div>
+          <div class="sp-name">${esc(c.nombre)}</div>
+          <div class="sp-sub">${esc(c.rfc||'')}${tel}</div>
         </div>`;
       }).join('')
     :'<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">Sin resultados</div>';
@@ -1624,12 +1673,12 @@ function verResumenDia(){
   } else {
     if(cobradas.length){
       html+='<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--green);margin-bottom:8px">✅ Cobrado hoy</div>';
-      html+=cobradas.map(r=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${r.folio} · <strong>${r.cliente||'—'}</strong></span><span style="font-weight:700;color:var(--green)">${fmt(r.estado==='pagado'?(r.total||0):(r.total||0)-(r.saldo||0))}</span></div>`).join('');
+      html+=cobradas.map(r=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${r.folio} · <strong>${esc(r.cliente||'—')}</strong></span><span style="font-weight:700;color:var(--green)">${fmt(r.estado==='pagado'?(r.total||0):(r.total||0)-(r.saldo||0))}</span></div>`).join('');
       html+=`<div style="display:flex;justify-content:space-between;padding:9px 0 4px;font-size:14px;font-weight:800;border-top:2px solid var(--green)"><span>Total cobrado</span><span style="color:var(--green)">${fmt(totalCobrado)} MXN</span></div>`;
     }
     if(pendientes.length){
       html+=`<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#c0392b;margin-top:${cobradas.length?'16px':'0'};margin-bottom:8px">⏳ Pendiente de cobro</div>`;
-      html+=pendientes.map(r=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${r.folio} · <strong>${r.cliente||'—'}</strong></span><span style="font-weight:700;color:#c0392b">${fmt(r.saldo||r.total||0)}</span></div>`).join('');
+      html+=pendientes.map(r=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${r.folio} · <strong>${esc(r.cliente||'—')}</strong></span><span style="font-weight:700;color:#c0392b">${fmt(r.saldo||r.total||0)}</span></div>`).join('');
       html+=`<div style="display:flex;justify-content:space-between;padding:9px 0 4px;font-size:14px;font-weight:800;border-top:2px solid #c0392b"><span>Por cobrar</span><span style="color:#c0392b">${fmt(totalPendiente)} MXN</span></div>`;
     }
   }
@@ -1674,7 +1723,7 @@ function verCobros(){
       <div class="cobro-row">
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;color:var(--navy);font-size:13px">${c.folio} ${tags}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.cliente} · ${c.fecha}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.cliente)} · ${c.fecha}</div>
         </div>
         <div class="cobro-saldo">${fmt(c.saldo)} MXN</div>
         ${accion}
@@ -1949,7 +1998,7 @@ function renderRems(list){
     return`<div class="rem-i" ${onclick} style="${esServidor?'cursor:default':''}">
       <div style="flex:1;min-width:0">
         <div class="rem-fo">${r.folio} ${etiqueta}</div>
-        <div class="rem-cl"><span style="cursor:pointer;text-decoration:underline dotted" onclick="event.stopPropagation();filtrarPorCliente('${(r.cliente||'').replace(/'/g,"\\'")}');verHist()">${r.cliente}</span> · ${r.fecha}</div>
+        <div class="rem-cl"><span style="cursor:pointer;text-decoration:underline dotted" onclick="event.stopPropagation();filtrarPorCliente('${(r.cliente||'').replace(/'/g,"\\'")}');verHist()">${esc(r.cliente)}</span> · ${r.fecha}</div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
         ${_estadoBadge(r)}
@@ -1984,9 +2033,71 @@ function modificarRem(id){
 
 function delRem(id){
   // Sin confirm() — Chrome puede bloquearlo; usar lógica directa
-  remisiones=remisiones.filter(r=>String(r.id)!==String(id));
+  const r=remisiones.find(x=>String(x.id)===String(id));
+  // Solo borramos en servidor si ya tiene folio definitivo REM- (las TMP- nunca llegaron al servidor)
+  const folioSrv=(r&&r.folio&&String(r.folio).indexOf('REM-')===0)?r.folio:'';
+  remisiones=remisiones.filter(x=>String(x.id)!==String(id));
   if(String(remActualId)===String(id)){remActualId=null;renderPagos();}
-  persistirRemisiones();renderRems(remisiones.slice(0,15));toast('Remisión eliminada','ok');
+  persistirRemisiones();renderRems(remisiones.slice(0,15));
+  if(folioSrv){
+    _encolarElim(folioSrv,id);          // se borra en servidor (ahora o al reconectar) → no revive en cobros
+    procesarColaElim();
+    toast('Eliminando en servidor…','ok');
+  }else{
+    toast('Remisión eliminada','ok');
+  }
+}
+// Cola de eliminaciones pendientes hacia el servidor (evita que una remisión borrada reaparezca en cobros).
+function _encolarElim(folio,id){
+  let cola=[]; try{cola=JSON.parse(localStorage.getItem('cola_elim')||'[]');}catch(_){}
+  if(!cola.some(e=>e.folio===folio)){cola.push({folio:folio,id:id||''});localStorage.setItem('cola_elim',JSON.stringify(cola));}
+}
+async function procesarColaElim(){
+  if(!navigator.onLine)return;
+  let cola=[]; try{cola=JSON.parse(localStorage.getItem('cola_elim')||'[]');}catch(_){return;}
+  if(!cola.length)return;
+  for(const e of cola.slice()){
+    try{
+      await fetch(getScriptUrl(),{method:'POST',body:JSON.stringify({tipo:'eliminar_remision',folio:e.folio,id:e.id})});
+      cola=cola.filter(x=>x.folio!==e.folio);
+      localStorage.setItem('cola_elim',JSON.stringify(cola));
+    }catch(_){ /* sin red: se reintenta al reconectar */ break; }
+  }
+  if(!cola.length){setTimeout(()=>{if(typeof bajarCobros==='function')bajarCobros();},600);}
+}
+
+// ── #7 Respaldo: exportar/restaurar TODO el estado local (recuperación ante desastre) ──
+const _CLAVES_RESPALDO=['r_rems','r_rems_bak','cola_offline','cola_remisiones','cola_pdf','cola_elim','r_empresa','r_fn','cache_cobros','cache_cobros_ts','device_id'];
+function exportarRespaldo(){
+  const out={_app:'SUMETEC-remisiones',_fecha:new Date().toISOString(),_version:1,datos:{}};
+  _CLAVES_RESPALDO.forEach(k=>{const v=localStorage.getItem(k);if(v!==null)out.datos[k]=v;});
+  const blob=new Blob([JSON.stringify(out)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='RESPALDO_SUMETEC_remisiones_'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+  toast('Respaldo descargado ✓','ok');
+}
+function importarRespaldo(input){
+  const f=input&&input.files&&input.files[0];if(!f){return;}
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    let obj;
+    try{obj=JSON.parse(ev.target.result);}catch(_){toast('Archivo dañado — no es un respaldo válido','err',5000);input.value='';return;}
+    if(!obj||obj._app!=='SUMETEC-remisiones'||!obj.datos){toast('Ese archivo no es un respaldo de Remisiones','err',5000);input.value='';return;}
+    // Red de seguridad: guardar el estado ACTUAL antes de sobrescribir (por si fue por error)
+    try{
+      const prev={}; _CLAVES_RESPALDO.forEach(k=>{const v=localStorage.getItem(k);if(v!==null)prev[k]=v;});
+      localStorage.setItem('_respaldo_antes_de_restaurar',JSON.stringify({fecha:new Date().toISOString(),datos:prev}));
+    }catch(_){}
+    let n=0;
+    Object.keys(obj.datos).forEach(k=>{try{localStorage.setItem(k,obj.datos[k]);n++;}catch(_){}});
+    input.value='';
+    toast('Respaldo restaurado ('+n+' bloques) ✓ — recargando…','ok',2500);
+    setTimeout(()=>location.reload(),1600);
+  };
+  reader.readAsText(f);
 }
 function nuevaRem(){
   // Sin confirm() — Chrome puede bloquearlo y dejar la app sin funcionar
@@ -2055,7 +2166,34 @@ function parseCSV(text){
 function _actualizarTokenStatus(){
   const t=API_TOKEN;
   const el=document.getElementById('tokenStatus');if(!el)return;
-  el.innerHTML=t?'<span style="color:var(--green)">✓ Token configurado</span>':'<span style="color:#C0392B">⚠️ Sin token — las llamadas al servidor serán rechazadas</span>';
+  el.innerHTML=t?'<span style="color:var(--muted)">💾 Token guardado (sin validar) — pulsa <b>🔌 Conectar y validar</b> para comprobar si es el correcto.</span>':'<span style="color:#C0392B">⚠️ Sin token — las llamadas al servidor serán rechazadas</span>';
+}
+// Pregunta al servidor si el token escrito es el correcto (endpoint ping).
+async function validarToken(){
+  const v=(document.getElementById('api_token_input').value||'').trim();
+  const el=document.getElementById('tokenStatus');
+  const btn=document.getElementById('btnConectarToken');
+  if(!v){ if(el)el.innerHTML='<span style="color:#C0392B">⚠️ Escribe o pega un token primero.</span>'; return; }
+  guardarApiToken(); // guarda lo que el usuario escribió antes de probar
+  if(btn){btn.disabled=true;btn.textContent='⏳ Conectando…';}
+  if(el)el.innerHTML='<span style="color:var(--muted)">🔌 Conectando con el servidor…</span>';
+  try{
+    const url=getScriptUrl()+'?tipo=ping&token='+encodeURIComponent(v);
+    const r=await fetch(url);
+    const j=await r.json();
+    if(j&&j.ok){
+      if(el)el.innerHTML='<span style="color:var(--green);font-weight:800">✅ Token CORRECTO — conectado al servidor.</span>';
+      toast('Token válido ✓','ok');
+    }else{
+      if(el)el.innerHTML='<span style="color:#C0392B;font-weight:800">❌ Token INCORRECTO — el servidor lo rechazó.</span>';
+      toast('Token incorrecto','warn',4000);
+    }
+  }catch(e){
+    if(el)el.innerHTML='<span style="color:#E67E22;font-weight:800">⚠️ Sin conexión — revisa tu internet o la URL del servidor.</span>';
+    toast('No se pudo conectar','warn',4000);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='🔌 Conectar y validar';}
+  }
 }
 function guardarApiToken(){
   const v=(document.getElementById('api_token_input').value||'').trim();
@@ -3394,7 +3532,9 @@ function _enviarPago(r,pago){
   fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
     body:JSON.stringify({tipo:'actualizar_remision',id:r.id||'',folio:r.folio,saldo:r.saldo,estado:r.estado,pago,device:DEVICE_ID})
   }).then(res=>res.json()).then(d=>{
-    if(d&&d.ok){_dequeueByUUID(pago.uuid);_marcarPagoSync(pago.uuid);}
+    if(d&&d.ok){_dequeueByUUID(pago.uuid);_marcarPagoSync(pago.uuid);
+      // Refresco inmediato de la lista compartida (sin esperar el heartbeat de 10s)
+      setTimeout(()=>{if(typeof bajarCobros==='function')bajarCobros();},700);}
     else _alertarNoAutorizado(d);
     actualizarBadgePendientes();
   }).catch(()=>{actualizarBadgePendientes();});
