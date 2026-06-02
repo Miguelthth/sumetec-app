@@ -1455,6 +1455,7 @@ function loadDraft(){
 }
 
 async function registrarRemision(gpsParam){
+  console.log('→ registrarRemision INICIO');
   const sn=snap();
   const activos=sn.items.filter(i=>(+i.qty>0)&&(+i.precio>0));
   if(!activos.length){toast('Agrega al menos un producto con cantidad y precio','err');return;}
@@ -1515,7 +1516,9 @@ async function registrarRemision(gpsParam){
   const okGuardado=persistirRemisiones();
   guardar();renderPagos();updateObsBalance(rem);
   _desbloquearPDF(true);
+  console.log('→ llamando sincronizarRemision...');
   sincronizarRemision(rem);
+  console.log('→ sincronizarRemision llamada (async)');
   // Generar y encolar PDF automáticamente (se sube al volver señal si estamos offline)
   setTimeout(()=>{
     console.log('✓ auto-PDF: isOnline='+isOnline+' jspdf='+!!window.jspdf);
