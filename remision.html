@@ -844,7 +844,10 @@ function cargarRemisiones(){
 // ── Reconciliación: ninguna remisión/pago local sin sincronizar queda fuera de la cola ──
 function _dequeueRemision(id){
   const cola=leerSeguro('cola_remisiones',[]);
-  guardarSeguro('cola_remisiones',JSON.stringify(cola.filter(r=>r.id!==id)));
+  const antes=cola.length;
+  const despues=cola.filter(r=>r.id!==id);
+  guardarSeguro('cola_remisiones',JSON.stringify(despues));
+  console.log('✓ _dequeueRemision: id='+id+' (cola: '+antes+' → '+despues.length+')');
 }
 function _marcarPagoSync(uuid){
   for(const r of remisiones){ const p=(r.pagos||[]).find(x=>x.uuid===uuid); if(p){ p._sync=true; persistirRemisiones(); return; } }
@@ -1521,10 +1524,15 @@ async function registrarRemision(gpsParam){
   console.log('→ sincronizarRemision llamada (async)');
   // Generar y encolar PDF automáticamente (se sube al volver señal si estamos offline)
   setTimeout(()=>{
-    console.log('✓ auto-PDF: isOnline='+isOnline+' jspdf='+!!window.jspdf);
+    console.log('✓ auto-PDF: isOnline='+isOnline+' jspdf='+!!window.jspdf+' rem.id='+rem.id);
     if(!isOnline||!window.jspdf){console.warn('auto-PDF: saltando (online='+isOnline+' jspdf='+!!window.jspdf+')');return;}
     console.log('→ auto-PDF: llamando descargarPDF');
-    descargarPDF(rem);
+    try{
+      descargarPDF(rem);
+      console.log('✓ descargarPDF completado');
+    }catch(e){
+      console.error('❌ error en descargarPDF:', e.message);
+    }
   },400);
 }
 
@@ -1551,6 +1559,7 @@ async function sincronizarRemision(rem){
       _dequeueRemision(rem.id);
       persistirRemisiones();
       _encolarPDFsiHace(rem); // re-subir PDF a Drive con el folio bueno (si hay)
+      actualizarPanelConexion(); // refrescar banner (desaparece si cola está vacía)
       console.log('✓ sincronización OK');
     }else{
       console.warn('⚠ servidor respondió con ok=false:', d);
@@ -2481,9 +2490,7 @@ function _generarComprobantePago(rem, descargar){
     doc.setFillColor(pagado?28:192, pagado?110:57, pagado?74:43);
     doc.roundedRect(ML,y,CW,12,2,2,'F');
     doc.setFontSize(10).setFont('helvetica','bold').setTextColor(255,255,255);
-    if(pagado){
-      doc.text('Gracias por su compra',ML+5,y+8);
-    } else {
+    if(!pagado){
       doc.text('Saldo pendiente: '+fmt(rem.saldo||0)+' MXN',ML+5,y+8);
     }
     y+=18;
@@ -2597,10 +2604,6 @@ function descargarPDF(remOverride, forzarDescarga){
       const fecCan=_remCanc.fechaCancelacion||'';
       _canc_obs_text='⚠ CANCELADA'+(motCan?' — '+motCan:'')+(fecCan?' | '+fecCan:'');
       obs_=obs_+(obs_?'\n':'')+_canc_obs_text;
-    }
-    // Si se pagó todo, agregar "Gracias por su compra"
-    if(_remCanc && (_remCanc.estado==='pagado' || +_remCanc.saldo===0)){
-      obs_=obs_+(obs_?'\n':'')+'\n✓ Gracias por su compra';
     }
     const empNombre = empresa.nombre||'SUMETEC';
     const empSlogan = empresa.slogan||'Suministramos soluciones, construimos confianza.';
