@@ -353,6 +353,23 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   <input class="pp-search" id="ppSearch" type="text" placeholder="Buscar código o descripción…" oninput="_ppFiltrar(this.value)">
   <div id="ppLista"></div>
 </div>
+<!-- Overlay bloqueante sin token — cubre TODA la app, no se cierra hasta configurar token -->
+<div id="tokenGate" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(11,45,74,.92);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:18px;padding:32px 28px;max-width:380px;width:calc(100% - 32px);text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+    <div style="font-size:52px;margin-bottom:12px">🔑</div>
+    <div style="font-size:19px;font-weight:800;color:#0B2D4A;margin-bottom:8px">Token requerido</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:22px;line-height:1.6">Sin token no puedes conectar con el servidor ni guardar remisiones.<br>Pégalo aquí para continuar.</div>
+    <input id="tg_input" type="password" placeholder="Pega tu token aquí…"
+      style="width:100%;box-sizing:border-box;padding:12px 14px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;margin-bottom:12px;font-family:inherit"
+      oninput="document.getElementById('tg_btn').disabled=!this.value.trim()">
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button onclick="_tgPegar()" style="flex:1;padding:10px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;background:#f9fafb;font-family:inherit">📋 Pegar</button>
+      <button id="tg_btn" onclick="_tgGuardar()" disabled
+        style="flex:2;padding:10px;background:#1C6E4A;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;opacity:.5">✅ Guardar y entrar</button>
+    </div>
+    <div style="font-size:11px;color:#9CA3AF">El token te lo da tu administrador o está en tu archivo TOKEN_SECRETO.txt</div>
+  </div>
+</div>
 <div id="netBar"><div id="netBarMsg">📵 Sin conexión — todo se guarda y se enviará al volver la señal</div></div>
 <div id="editBanner" class="no-print" style="display:none;position:sticky;top:54px;z-index:191;background:#1a56a0;color:#fff;font-size:12.5px;font-weight:700;text-align:center;padding:8px 16px;box-shadow:0 2px 8px rgba(0,0,0,.25);line-height:1.4">
   ✏️ <span id="editBannerTxt">Editando remisión</span> — al pulsar <b>REGISTRAR</b> se recalcula y se sobrescribe en Drive.
@@ -412,7 +429,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
           <button onclick="abrirNuevoCliente()" style="width:100%;padding:7px;background:#E8F5EF;color:#1C6E4A;border:none;border-radius:6px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer">＋ Agregar nuevo cliente</button>
         </div>
       </div>
-      <div class="fr"><span class="fl">Nombre / Razón Social</span><div class="fv"><input id="c_nombre" type="text" placeholder="—" oninput="autosave();_verificarAdeudo(this.value);_actualizarBtnPrecarga(this.value)"></div></div>
+      <div class="fr"><span class="fl">Nombre / Razón Social</span><div class="fv"><input id="c_nombre" type="text" placeholder="—" oninput="autosave();_verificarAdeudo(this.value);_actualizarBtnPrecarga(this.value);_autoFillCliente(this.value)"></div></div>
       <div id="adeudoBox" style="display:none;margin:6px 0;padding:10px 12px;background:#fff8e1;border:1.5px solid #f59e0b;border-radius:8px;font-size:12px"></div>
       <div id="precargaWrap" class="no-print" style="display:none;margin:4px 0"><button onclick="abrirPrecarga()" style="width:100%;padding:9px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">📋 Precargar pedido habitual de este cliente</button></div>
       
@@ -497,7 +514,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <div id="confRegIcon" style="font-size:52px;margin-bottom:12px">✅</div>
       <div id="confRegTitulo" style="font-size:20px;font-weight:800;color:var(--navy);margin-bottom:8px"></div>
       <div id="confRegDetalle" style="font-size:14px;color:var(--muted);margin-bottom:20px;line-height:1.6"></div>
-      <button class="btn btn-p" style="width:100%;justify-content:center;padding:14px;font-size:15px;font-weight:700;border-radius:10px" onclick="closeOv('ovConfirmReg')">Aceptar</button>
+      <button class="btn btn-p" style="width:100%;justify-content:center;padding:14px;font-size:15px;font-weight:700;border-radius:10px;margin-bottom:8px" onclick="closeOv('ovConfirmReg');descargarPDFSiRegistrado()">⬇️ Descargar PDF</button>
+      <button class="btn" style="width:100%;justify-content:center;padding:10px;font-size:14px;background:var(--bg);color:var(--muted)" onclick="closeOv('ovConfirmReg')">Ahora no</button>
     </div>
   </div>
 
@@ -1204,8 +1222,17 @@ document.addEventListener('DOMContentLoaded',()=>{
   startHeartbeat();
   _limpiarMemoriaAntigua();
   reconciliarPendientes();
-  // Avisar si el token no está configurado
-  setTimeout(()=>{if(!API_TOKEN)toast('⚠️ Sin token — abre 🔑 Token antes de operar','warn',12000);},1500);
+  // Bloqueo total si no hay token — no se puede usar la app hasta configurarlo
+  _tokenGateCheck();
+  // Bug 15: si no hay remisiones ni catálogo (caché borrado), avisar qué pasó y qué recuperar
+  setTimeout(()=>{
+    const sinRems=!remisiones.length, sinCat=!PRODUCTOS.length, sinCli=!CLIENTES.length;
+    if(sinRems&&sinCat){
+      toast('⚠️ Sin datos locales (caché borrada). Los datos en Drive están seguros — abre ⚙️ Catálogos para recargar.','warn',10000);
+    } else if(sinCat){
+      toast('Catálogo vacío — abre ⚙️ Catálogos para recargar precios','warn',6000);
+    }
+  },2500);
   // Remisiones primero (folio definitivo), después pagos, después PDFs.
   procesarColaRemisiones();
   setTimeout(procesarCola,1200);
@@ -1220,7 +1247,23 @@ function setFecha(){
   document.getElementById('fechaDisp').textContent=now.toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'});
   document.getElementById('horaDisp').textContent=now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
 }
-function syncFolio(v){const fc=document.getElementById('folioCard');if(fc)fc.textContent=v||'—';syncPrintHeader();autosave()}
+function syncFolio(v){
+  const fc=document.getElementById('folioCard');if(fc)fc.textContent=v||'—';
+  // Bug 10: indicador visual cuando el folio es temporal (sin internet)
+  const fb=document.getElementById('folioBadge');
+  const tip=document.getElementById('folioTmpTip');
+  if(fb){
+    const esTmp=String(v||'').indexOf('TMP-')===0;
+    fb.style.color=esTmp?'#b45309':'';
+    if(esTmp){
+      if(!tip){const d=document.createElement('div');d.id='folioTmpTip';d.className='no-print';
+        d.style.cssText='font-size:10px;color:#b45309;font-weight:600;margin-top:2px';
+        d.textContent='⏳ Folio temporal — se asignará al conectar';
+        fb.parentNode.insertBefore(d,fb.nextSibling);}
+    } else { if(tip)tip.remove(); }
+  }
+  syncPrintHeader();autosave();
+}
 
 function genFolio(){
   let n=parseInt(localStorage.getItem('r_fn')||'100')+1;
@@ -1429,7 +1472,7 @@ function renderTable(){
 <td class="td-c"><input class="ti c" type="number" min="0" value="${esc(it.qty)}" placeholder="0" data-id="${it._id}" data-f="qty" oninput="upd(this)" onclick="this.select()"></td>
 <td class="td-cl" style="position:relative"><input class="ti cl" type="text" value="${esc(it.clave)}" placeholder="CÓDIGO" data-id="${it._id}" data-f="clave" oninput="upd(this);showPP(this)" onblur="hidePP(this)" onclick="this.select();showPP(this)"><div class="sp" id="pp${it._id}" style="top:34px;left:0;min-width:280px" onmousedown="event.preventDefault()"></div></td>
 <td><input class="ti" type="text" value="${esc(it.desc)}" placeholder="Descripción" data-id="${it._id}" data-f="desc" oninput="upd(this)"></td>
-<td class="td-r"><input class="ti r" type="number" min="0" step="0.01" value="${esc(it.precio)}" placeholder="0.00" data-id="${it._id}" data-f="precio" oninput="upd(this)" onclick="this.select()">${it._precioAnt!=null?`<div class="no-print" onclick="usarPrecioAnterior(${it._id})" style="cursor:pointer;color:#1a56a0;font-size:9px;font-weight:700;margin-top:1px;white-space:nowrap" title="Precio que le diste antes a este cliente">↩ usar $${(+it._precioAnt).toFixed(2)}</div>`:''}${(+it.costo>0&&+it.precio>0)?`<div class="no-print" onclick="_infoMargen(${it._id})" style="cursor:pointer;font-size:9px;font-weight:700;margin-top:1px;color:${((+it.precio-+it.costo)/+it.precio*100)<30?'#c0392b':'#1C6E4A'}" title="Margen sobre costo (toca para detalle)">▣ ${(((+it.precio-+it.costo)/+it.precio)*100).toFixed(0)}%</div>`:''}</td>
+<td class="td-r" style="position:relative"><input class="ti r" type="number" min="0" step="0.01" value="${esc(it.precio)}" placeholder="0.00" data-id="${it._id}" data-f="precio" oninput="upd(this)" onclick="this.select()">${it._precioAnt!=null?`<div class="no-print" onclick="usarPrecioAnterior(${it._id})" style="cursor:pointer;color:#1a56a0;font-size:9px;font-weight:700;white-space:nowrap;line-height:1" title="Precio que le diste antes a este cliente">↩ $${(+it._precioAnt).toFixed(2)}</div>`:''}${(+it.costo>0&&+it.precio>0)?`<div id="margen${it._id}" class="no-print" onclick="_infoMargen(${it._id})" style="cursor:pointer;font-size:9px;font-weight:800;line-height:1;color:${((+it.precio-+it.costo)/+it.precio*100)<30?'#c0392b':'#1C6E4A'}" title="Margen — toca para detalle">▣ ${(((+it.precio-+it.costo)/+it.precio)*100).toFixed(0)}%</div>`:''}</td>
 <td class="td-c td-iva">${it.iva||0}%</td>
 <td class="td-imp" id="imp${it._id}">${fmt(imp(it))}</td>
 <td class="td-del no-print"><button class="del-btn" onclick="delRow(${it._id})">✕</button></td>`;
@@ -1440,6 +1483,15 @@ function upd(input){
   const id=+input.dataset.id,f=input.dataset.f,it=items.find(i=>i._id===id);if(!it)return;
   it[f]=['qty','precio','iva'].includes(f)?(input.value===''?'':+input.value):input.value;
   const el=document.getElementById('imp'+id);if(el)el.textContent=fmt(imp(it));calcTotals();
+  // Bug 3: actualizar badge de margen en tiempo real al cambiar precio
+  if(f==='precio'){
+    const mb=document.getElementById('margen'+id);
+    if(mb&&+it.costo>0&&+it.precio>0){
+      const m=((+it.precio-+it.costo)/+it.precio*100);
+      mb.textContent='▣ '+m.toFixed(0)+'%';
+      mb.style.color=m<30?'#c0392b':'#1C6E4A';
+    }
+  }
 }
 function imp(it){return(+it.qty||0)*(+it.precio||0)}
 function fmtPrecio(n){return n===''||n===null||n===undefined?'':parseFloat(n).toFixed(2)}
@@ -1531,15 +1583,32 @@ function usarPrecioAnterior(rowId){
   renderTable();calcTotals();
   toast('Precio anterior aplicado ✓','ok');
 }
-// F5: detalle de margen (cuando el ERP exporte el COSTO del producto).
+// F5: detalle de margen — modal visual (no alert del navegador).
 function _infoMargen(rowId){
   const it=items.find(i=>i._id===rowId);if(!it)return;
   const c=+it.costo||0,p=+it.precio||0;
-  if(p<=0){toast('Sin precio','warn');return;}
+  if(p<=0){toast('Sin precio configurado','warn');return;}
   const util=p-c, m=util/p*100;
-  alert('Margen — '+(it.clave||it.desc||'producto')+'\n\n'
-    +'Precio: $'+p.toFixed(2)+'\nCosto: $'+c.toFixed(2)+'\nUtilidad: $'+util.toFixed(2)+'\nMargen: '+m.toFixed(1)+'%'
-    +(m<30?'\n\n⚠️ Margen MENOR al 30%':'\n\n✓ Margen igual o mayor al 30%'));
+  const ok=m>=30;
+  let ov=document.getElementById('ovMargen');
+  if(!ov){
+    ov=document.createElement('div');ov.id='ovMargen';ov.className='ov';ov.style.zIndex='970';
+    ov.innerHTML=`<div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;width:calc(100% - 32px);text-align:center">
+      <div id="ovMargenIco" style="font-size:44px;margin-bottom:10px"></div>
+      <div id="ovMargenTit" style="font-size:18px;font-weight:800;margin-bottom:14px"></div>
+      <div id="ovMargenBody" style="font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:18px"></div>
+      <button class="btn btn-p" style="width:100%;justify-content:center;padding:12px" onclick="this.closest('.ov').classList.remove('open')">Cerrar</button>
+    </div>`;
+    ov.addEventListener('click',e=>{if(e.target===ov)ov.classList.remove('open');});
+    document.body.appendChild(ov);
+  }
+  document.getElementById('ovMargenIco').textContent=ok?'✅':'⚠️';
+  document.getElementById('ovMargenTit').innerHTML=(ok?'<span style="color:#1C6E4A">Margen OK</span>':'<span style="color:#c0392b">Margen bajo</span>')+'<br><span style="font-size:13px;font-weight:400;color:var(--muted)">'+(it.clave||it.desc||'producto')+'</span>';
+  document.getElementById('ovMargenBody').innerHTML=
+    'Precio: <b>$'+p.toFixed(2)+'</b><br>Costo proveedor: <b>$'+c.toFixed(2)+'</b><br>Utilidad: <b>$'+util.toFixed(2)+'</b><br>'
+    +'Margen: <b style="font-size:18px;color:'+(ok?'#1C6E4A':'#c0392b')+'">'+m.toFixed(1)+'%</b><br>'
+    +(ok?'<span style="color:#1C6E4A">✓ Mayor o igual al 30%</span>':'<span style="color:#c0392b">⚠️ Menor al 30% — revisa precio o negocia con proveedor</span>');
+  ov.classList.add('open');
 }
 
 // ── F6: Precarga del pedido habitual del cliente ──────────────────────────────
@@ -1581,6 +1650,7 @@ function abrirPrecarga(){
         <span>Cant: <input id="pc_qty${i}" type="number" min="0" step="1" value="${it.qty}" style="width:62px;padding:3px 6px;border:1px solid var(--border);border-radius:6px"></span>
         <label style="cursor:pointer"><input type="radio" name="pc_pr${i}" value="hist" checked> Histórico $${it.precioHist.toFixed(2)}</label>
         ${sug!=null?`<label style="cursor:pointer"><input type="radio" name="pc_pr${i}" value="sug"> ${sugLbl}</label>`:''}
+        <label style="cursor:pointer"><input type="radio" name="pc_pr${i}" value="sin"> Sin precio</label>
       </div>
     </div>`;
   }).join('');
@@ -1588,13 +1658,25 @@ function abrirPrecarga(){
 }
 function _precargaAplicar(){
   let agregados=0;
+  // Buscar filas vacías existentes para rellenarlas (bug 9)
+  const vacias=items.filter(i=>(!i.clave&&!i.desc&&(+i.qty||0)===0&&(+i.precio||0)===0));
+  let vaciasIdx=0;
   _precargaItems.forEach((it,i)=>{
     const chk=document.getElementById('pc_chk'+i); if(!chk||!chk.checked)return;
     const qty=+(document.getElementById('pc_qty'+i)||{}).value||0; if(qty<=0)return;
     const prSel=(document.querySelector('input[name="pc_pr'+i+'"]:checked')||{}).value||'hist';
     const sug=_precioCatalogo(it.clave);
-    const precio=(prSel==='sug'&&sug!=null)?sug:it.precioHist;
-    items.push({_id:_id++,qty:qty,clave:it.clave,desc:it.desc,precio:precio,iva:ivaGlobal});
+    let precio=0;
+    if(prSel==='sin') precio=0;
+    else if(prSel==='sug'&&sug!=null) precio=sug;
+    else precio=it.precioHist;
+    // Usar fila vacía si hay; si no, agregar nueva
+    if(vaciasIdx<vacias.length){
+      const fila=vacias[vaciasIdx++];
+      fila.clave=it.clave;fila.desc=it.desc;fila.qty=qty;fila.precio=precio;fila.iva=ivaGlobal;
+    } else {
+      items.push({_id:_id++,qty:qty,clave:it.clave,desc:it.desc,precio:precio,iva:ivaGlobal});
+    }
     agregados++;
   });
   renderTable();calcTotals();closeOv('ovPrecarga');
@@ -1631,11 +1713,41 @@ function renderCList(list){
       }).join('')
     :'<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">Sin resultados</div>';
 }
+// Bug 8: auto-fill de datos del cliente al escribir nombre.
+// Busca en CLIENTES (ERP) primero; si no hay datos completos, complementa con remisiones locales.
+let _autoFillTimer=null;
+function _autoFillCliente(nombre){
+  clearTimeout(_autoFillTimer);
+  const q=(nombre||'').trim().toLowerCase();
+  if(q.length<3)return;
+  _autoFillTimer=setTimeout(()=>{
+    // Solo si los campos están vacíos (no pisar lo que el usuario ya escribió)
+    const dirEl=document.getElementById('c_dir');if(dirEl&&dirEl.value.trim())return;
+    // 1) Buscar en CLIENTES (ERP exportado)
+    const match=CLIENTES.find(c=>(c.nombre||'').toLowerCase()===q||(c.nombre||'').toLowerCase().startsWith(q));
+    let datos=match?{dir:match.dir,cp:match.cp,tel:match.tel,rfc:match.rfc}:{};
+    // 2) Complementar con la última remisión local si faltan campos
+    for(const r of remisiones){
+      if((r.cliente||'').trim().toLowerCase()!==q)continue;
+      const d=r.data||{};
+      if(!datos.dir&&d.c_dir)datos.dir=d.c_dir;
+      if(!datos.cp&&d.c_cp)datos.cp=d.c_cp;
+      if(!datos.tel&&d.c_tel)datos.tel=d.c_tel;
+      break;
+    }
+    // Rellenar solo celdas que siguen vacías
+    if(datos.dir){const el=document.getElementById('c_dir');if(el&&!el.value.trim())el.value=datos.dir;}
+    if(datos.cp){const el=document.getElementById('c_cp');if(el&&!el.value.trim())el.value=datos.cp;}
+    if(datos.tel){const el=document.getElementById('c_tel');if(el&&!el.value.trim())el.value=datos.tel;}
+    if(datos.rfc){const el=document.getElementById('c_rfc');if(el&&!el.value.trim())el.value=datos.rfc;}
+    if(match)autosave();
+  },600);
+}
 function selCliente(idx){
   const c=CLIENTES[idx];if(!c)return;
   ['nombre','dir','cp','tel','rfc','email','contacto'].forEach(f=>{const el=document.getElementById('c_'+f);if(el)el.value=c[f]||''});
   document.getElementById('cPanel').classList.remove('open');cPanelOpen=false;autosave();
-  _actualizarBtnPrecarga(c.nombre); // F6: mostrar precarga si tiene pedidos anteriores
+  _actualizarBtnPrecarga(c.nombre);
 }
 document.addEventListener('click',e=>{
   const p=document.getElementById('cPanel');
@@ -2325,7 +2437,17 @@ function modificarRem(id){
   _modoEdicion=r.id;
   r.sincronizado=false;
   _ocultarAdeudo();
-  renderPagos();updateObsBalance(r);
+  // Bug 5: asegurar que el área de cobro esté activa y visible
+  const _chk=document.getElementById('checkPagado');if(_chk){_chk.checked=(r.estado==='pagado');_chk.disabled=false;}
+  const _aa=document.getElementById('abonoArea');if(_aa)_aa.style.display='block';
+  const _wm=document.getElementById('wmPagado');if(_wm)_wm.style.display=r.estado==='pagado'?'flex':'none';
+  renderPagos();
+  // Bug 5: recalcular obs desde cero con el historial real de pagos
+  const _ta=document.getElementById('obs');
+  if(_ta){
+    _ta.value=(r.data&&r.data.obs?r.data.obs.replace(/\n?(?:--- BALANCE ---|=== PAGOS ===|--- PAGOS ---|Gracias por su compra)[\s\S]*/,'').trimEnd():'')||_LEYENDA_DEFAULT;
+  }
+  updateObsBalance(r);
   _desbloquearPDF(true);
   // Banner de aviso
   const eb=document.getElementById('editBanner');
@@ -2420,6 +2542,9 @@ function nuevaRem(){
 }
 function _limpiarFormulario(){
   items=[];
+  ivaGlobal=0; // Bug 11: resetear IVA a 0 en cada nueva remisión
+  document.querySelectorAll('.iva-opt').forEach(o=>o.classList.toggle('sel',parseInt(o.textContent)===0));
+  const lbl=document.getElementById('ivaLbl');if(lbl)lbl.textContent='0%';
   ['c_nombre','c_dir','c_cp','c_tel','obs'].forEach(f=>{const el=document.getElementById(f);if(el)el.value='';});
   const da=document.getElementById('d_asesor');if(da)da.selectedIndex=0;
   const dp2=document.getElementById('d_pago');if(dp2)dp2.selectedIndex=0;
@@ -2515,6 +2640,30 @@ function guardarApiToken(){
   API_TOKEN=v;
   localStorage.setItem('api_token',v);
   _actualizarTokenStatus();
+  _tokenGateCheck(); // ocultar/mostrar el bloqueo según si ya hay token
+}
+// ── Token Gate: bloquea TODA la app si no hay token ──────────────────────────
+function _tokenGateCheck(){
+  const gate=document.getElementById('tokenGate');
+  if(!gate)return;
+  if(!API_TOKEN){gate.style.display='flex';}
+  else{gate.style.display='none';}
+}
+function _tgPegar(){
+  navigator.clipboard.readText().then(t=>{
+    const v=(t||'').trim();
+    const inp=document.getElementById('tg_input');
+    if(inp&&v){inp.value=v; document.getElementById('tg_btn').disabled=false;}
+    else toast('Portapapeles vacío — pégalo manualmente','warn',3000);
+  }).catch(()=>toast('Pégalo manualmente en el campo','warn',3000));
+}
+function _tgGuardar(){
+  const v=(document.getElementById('tg_input')?.value||'').trim();
+  if(!v){toast('Escribe el token primero','err');return;}
+  // Copiar también al campo del modal de token (consistencia)
+  const inp2=document.getElementById('api_token_input');if(inp2)inp2.value=v;
+  guardarApiToken();
+  toast('Token guardado ✓ Bienvenido','ok',3000);
 }
 // Modal dedicado del token
 function abrirToken(){
@@ -3628,7 +3777,8 @@ async function confirmarCancelacion(){
   persistirRemisiones();
   closeOv('ovCancelar');_cancelarId=null;_cancelarFolio=null;
   if(remActualId===r.id)renderPagos();
-  renderRems(remisiones);
+  // Bug 7: re-renderizar el historial completo (local + servidor) para que muestre "cancelada" de inmediato
+  _renderHistCombinado();
   toast('Remisión '+r.folio+' cancelada','ok');
   // Sincronizar cancelación con Sheets
   const url=getScriptUrl();
@@ -3677,13 +3827,18 @@ function _obsLineasPagos(r){
   if(r.estado==='pagado'&&(pagosValidos.length>1||anulaciones.length)) lineas.push('PAGADO COMPLETO ✓');
   return lineas.join('\n');
 }
+// Leyenda por defecto de la empresa (aparece siempre como base del obs).
+const _LEYENDA_DEFAULT='Los precios están sujetos a cambio sin previo aviso.\nDisponibilidad sujeta a existencia.';
 function updateObsBalance(r){
   const ta=document.getElementById('obs');
   if(!ta)return;
   const _syncData=()=>{if(r&&r.data)r.data.obs=ta.value;};
+  // Limpiar bloque de pagos anterior (incluyendo Gracias por su compra)
   let txt=ta.value.replace(/\n?(?:--- BALANCE ---|=== PAGOS ===|--- PAGOS ---|Gracias por su compra)[\s\S]*/,'').trimEnd();
+  // Si el textarea está vacío, sembrar la leyenda corporativa (bug 4/6)
+  if(!txt) txt=_LEYENDA_DEFAULT;
   const bloque=_obsLineasPagos(r);
-  ta.value=bloque?txt+(txt?'\n\n':'')+bloque:txt;
+  ta.value=bloque?txt+'\n\n'+bloque:txt;
   _syncData();
   autosave();
 }

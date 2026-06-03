@@ -302,6 +302,23 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 #netBar.show{display:block}
 #netBar.warn{background:#E67E22}
 </style>
+<!-- Overlay bloqueante sin token -->
+<div id="tokenGate" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(11,45,74,.92);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:18px;padding:32px 28px;max-width:380px;width:calc(100% - 32px);text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+    <div style="font-size:52px;margin-bottom:12px">🔑</div>
+    <div style="font-size:19px;font-weight:800;color:#0B2D4A;margin-bottom:8px">Token requerido</div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:22px;line-height:1.6">Sin token no puedes conectar con el servidor ni guardar cotizaciones.<br>Pégalo aquí para continuar.</div>
+    <input id="tg_input" type="password" placeholder="Pega tu token aquí…"
+      style="width:100%;box-sizing:border-box;padding:12px 14px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;margin-bottom:12px;font-family:inherit"
+      oninput="document.getElementById('tg_btn').disabled=!this.value.trim()">
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button onclick="_tgPegar()" style="flex:1;padding:10px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;background:#f9fafb;font-family:inherit">📋 Pegar</button>
+      <button id="tg_btn" onclick="_tgGuardar()" disabled
+        style="flex:2;padding:10px;background:#1C6E4A;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;opacity:.5">✅ Guardar y entrar</button>
+    </div>
+    <div style="font-size:11px;color:#9CA3AF">El token te lo da tu administrador o está en tu archivo TOKEN_SECRETO.txt</div>
+  </div>
+</div>
 <div id="netBar"><div id="netBarMsg">📵 Sin conexión — tus cotizaciones se guardan y se subirán al volver la señal</div></div>
 <div class="print-rpt" id="printRpt">
   <img id="prLogo" style="height:44px;width:auto" alt="Logo">
@@ -701,7 +718,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   startHeartbeat();
   procesarColaCot();
   actualizarPanelConexion();
-  setTimeout(()=>{if(!API_TOKEN)toast('⚠️ Sin token — abre 🔑 Token antes de operar','warn',12000);},1500);
+  _tokenGateCheck(); // bloqueo total si no hay token
 });
 function _alertarNoAutorizado(d){
   if(d&&d.error&&String(d.error).includes('no autorizado'))
@@ -1107,6 +1124,28 @@ function guardarApiToken(){
   API_TOKEN=v;
   localStorage.setItem('api_token',v);
   _actualizarTokenStatus();
+  _tokenGateCheck();
+}
+function _tokenGateCheck(){
+  const gate=document.getElementById('tokenGate');
+  if(!gate)return;
+  if(!API_TOKEN){gate.style.display='flex';}
+  else{gate.style.display='none';}
+}
+function _tgPegar(){
+  navigator.clipboard.readText().then(t=>{
+    const v=(t||'').trim();
+    const inp=document.getElementById('tg_input');
+    if(inp&&v){inp.value=v; document.getElementById('tg_btn').disabled=false;}
+    else toast('Portapapeles vacío — pégalo manualmente','warn',3000);
+  }).catch(()=>toast('Pégalo manualmente en el campo','warn',3000));
+}
+function _tgGuardar(){
+  const v=(document.getElementById('tg_input')?.value||'').trim();
+  if(!v){toast('Escribe el token primero','err');return;}
+  const inp2=document.getElementById('api_token_input');if(inp2)inp2.value=v;
+  guardarApiToken();
+  toast('Token guardado ✓ Bienvenido','ok',3000);
 }
 // Modal dedicado del token
 function abrirToken(){
