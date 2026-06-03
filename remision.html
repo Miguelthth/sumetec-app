@@ -2436,10 +2436,16 @@ function renderRems(list){
       ?`<button class="btn" style="padding:4px 8px;font-size:11px;background:#fff0f0;color:#c0392b;border:1px solid #fecaca;border-radius:6px" onclick="event.stopPropagation();abrirCancelacion('${r.id}','${r.folio}')">🚫</button>`
       :'';
     const onclick=esServidor?'':`onclick="loadRem('${r.id}')"`;
+    const cant=!esServidor&&r.data&&r.data.items?r.data.items.filter(i=>+i.qty>0).length:null;
+    const saldoColor=r.estado==='pagado'?'var(--green)':r.estado==='abono'?'#92400E':'#C0392B';
+    const saldoLabel=r.estado==='pagado'?'Pagado':r.estado==='cancelada'?'Cancelada':('Saldo: '+fmt(r.saldo||0)+' MXN');
+    const cantStr=cant!==null?(cant+' art.'):'';
+    const detSuffix=[cantStr,r.fecha].filter(Boolean).join(' &middot; ');
     return`<div class="rem-i" ${onclick} style="${esServidor?'cursor:default':''}">
       <div style="flex:1;min-width:0">
         <div class="rem-fo">${r.folio} ${etiqueta}</div>
-        <div class="rem-cl"><span style="cursor:pointer;text-decoration:underline dotted" onclick="event.stopPropagation();filtrarPorCliente('${(r.cliente||'').replace(/'/g,"\\'")}');verHist()">${esc(r.cliente)}</span> · ${r.fecha}</div>
+        <div class="rem-cl"><span style="cursor:pointer;text-decoration:underline dotted" onclick="event.stopPropagation();filtrarPorCliente('${(r.cliente||'').replace(/'/g,"\\'")}');verHist()">${esc(r.cliente)}</span></div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:1px"><span style="color:${saldoColor};font-weight:600">${saldoLabel}</span>${detSuffix?' &middot; '+detSuffix:''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
         ${_estadoBadge(r)}
@@ -3751,7 +3757,8 @@ async function registrarTodo(){
     const montoInput=Math.round(parseFloat(document.getElementById('montoAbono')?.value||0)*100)/100;
     if(remActualId){
       const r=remisiones.find(x=>x.id===remActualId);
-      if(r&&r.estado!=='pagado'){
+      // En modo edición permitir aplicar pago aunque ya estuviera marcada como pagada
+      if(r&&(r.estado!=='pagado'||_modoEdicion)){
         if(chkPagado||(_pagoPreparado&&_pagoPreparado.tipo==='completo')){
           aplicarPago(r, r.saldo, {completo:true});
         } else if(montoInput>0){
@@ -3884,7 +3891,7 @@ function _obsLineasPagos(r){
     } else {
       lineas.push('Abono: '+fmt(p.monto)+' MXN | '+p.fecha);
       const sd=p.saldo_despues!==undefined?p.saldo_despues:0;
-      if(sd>0.001) lineas.push('Saldo pendiente: '+fmt(sd)+' MXN');
+      if(sd>0.001) lineas.push('Saldo pendiente: '+fmt(sd)+' MXN | '+p.fecha);
     }
   });
   anulaciones.forEach(p=>{
@@ -3899,12 +3906,18 @@ function updateObsBalance(r){
   const ta=document.getElementById('obs');
   if(!ta)return;
   const _syncData=()=>{if(r&&r.data)r.data.obs=ta.value;};
-  // Limpiar bloque de pagos anterior (incluyendo Gracias por su compra)
-  let txt=ta.value.replace(/\n?(?:--- BALANCE ---|=== PAGOS ===|--- PAGOS ---|Gracias por su compra)[\s\S]*/,'').trimEnd();
-  // Si el textarea está vacío, sembrar la leyenda corporativa (bug 4/6)
+  // Limpiar bloque de pagos anterior (incluyendo saldo, pagos y gracias)
+  let txt=ta.value.replace(/\n?(?:--- BALANCE ---|=== PAGOS ===|--- PAGOS ---|Gracias por su compra|Saldo pendiente:)[\s\S]*/,'').trimEnd();
+  // Si el textarea está vacío, sembrar la leyenda corporativa
   if(!txt) txt=_LEYENDA_DEFAULT;
   const bloque=_obsLineasPagos(r);
-  ta.value=bloque?txt+'\n\n'+bloque:txt;
+  let finalBloque=bloque;
+  // Sin pagos pero con saldo → mostrar el saldo pendiente siempre
+  if(!finalBloque && r && (r.saldo||0)>0.005 && r.estado!=='pagado' && r.estado!=='cancelada'){
+    const _fecha=r.fecha||new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
+    finalBloque='Saldo pendiente: '+fmt(r.saldo||0)+' MXN | '+_fecha;
+  }
+  ta.value=finalBloque?txt+'\n\n'+finalBloque:txt;
   _syncData();
   autosave();
 }
@@ -3960,9 +3973,24 @@ function renderPagos(){
   const sd=document.getElementById('saldoDisplay');
   if(sd)sd.textContent=fmt(r.saldo||0)+' MXN';
   const check=document.getElementById('checkPagado');
-  if(check){check.checked=r.estado==='pagado';check.disabled=r.estado==='pagado';}
+  const enEdicion=!!_modoEdicion;
+  if(check){check.checked=r.estado==='pagado';check.disabled=!enEdicion&&r.estado==='pagado';}
   const aa=document.getElementById('abonoArea');
-  if(aa)aa.style.display=r.estado==='pagado'?'none':'block';
+  if(aa)aa.style.display=(!enEdicion&&r.estado==='pagado')?'none':'block';
+  // Aviso en modo edición si la remisión ya tenía pagos registrados
+  let _editPagosAviso=document.getElementById('_editPagosAviso');
+  if(enEdicion&&(r.pagos||[]).length>0){
+    if(!_editPagosAviso){
+      _editPagosAviso=document.createElement('div');_editPagosAviso.id='_editPagosAviso';
+      _editPagosAviso.className='no-print';
+      _editPagosAviso.style.cssText='background:#fff8e1;border:1.5px solid #f59e0b;border-radius:8px;padding:8px 12px;font-size:11.5px;color:#92400e;margin-bottom:10px;font-weight:600';
+      const pc=document.getElementById('pagosListaCompacta');
+      if(pc)pc.parentNode.insertBefore(_editPagosAviso,pc.nextSibling);
+    }
+    _editPagosAviso.innerHTML='✏️ Modo edición — anula el pago incorrecto y registra el correcto. El saldo se recalculará.';
+  } else if(_editPagosAviso){
+    _editPagosAviso.remove();
+  }
   const ctrl=document.getElementById('pagosControles');
   if(ctrl)ctrl.style.display='block';
   const btnR=document.getElementById('btnPagoRapido');
