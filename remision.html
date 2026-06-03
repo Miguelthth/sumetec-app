@@ -128,7 +128,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .lb{padding:20px 28px}
 .lb+.lb{border-left:1px solid var(--border)}
 .bt{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:1.8px;color:var(--muted);margin-bottom:11px;display:flex;align-items:center;gap:5px}
-.obs-ta{width:100%;border:none;background:transparent;font-family:inherit;font-size:12.5px;color:var(--muted);line-height:1.65;resize:none;outline:none;min-height:70px}
+.obs-ta{width:100%;border:none;background:transparent;font-family:inherit;font-size:12.5px;color:var(--muted);line-height:1.65;resize:none;outline:none;min-height:180px}
 .obs-ta:focus{background:var(--bg);border-radius:6px;outline:2px solid var(--green);padding:5px}
 .rr{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12.5px;border-bottom:1px solid var(--border)}
 .rr:last-of-type{border-bottom:none}
@@ -273,7 +273,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   .rem-i{padding:13px 12px}
 
   /* Sección inferior */
-  .obs-ta{font-size:13px;min-height:80px}
+  .obs-ta{font-size:13px;min-height:200px}
   .lb{padding:16px}
 
   /* Footer del documento */
@@ -1499,7 +1499,13 @@ function renderTable(){
 <td class="td-c"><input class="ti c" type="number" min="0" value="${esc(it.qty)}" placeholder="0" data-id="${it._id}" data-f="qty" oninput="upd(this)" onclick="this.select()"></td>
 <td class="td-cl" style="position:relative"><input class="ti cl" type="text" value="${esc(it.clave)}" placeholder="CÓDIGO" data-id="${it._id}" data-f="clave" oninput="upd(this);showPP(this)" onblur="hidePP(this)" onclick="this.select();showPP(this)"><div class="sp" id="pp${it._id}" style="top:34px;left:0;min-width:280px" onmousedown="event.preventDefault()"></div></td>
 <td><input class="ti" type="text" value="${esc(it.desc)}" placeholder="Descripción" data-id="${it._id}" data-f="desc" oninput="upd(this)"></td>
-<td class="td-r" style="position:relative"><input class="ti r" type="number" min="0" step="0.01" value="${esc(it.precio)}" placeholder="0.00" data-id="${it._id}" data-f="precio" oninput="upd(this)" onclick="this.select()">${it._precioAnt!=null?`<div class="no-print" onclick="usarPrecioAnterior(${it._id})" style="cursor:pointer;color:#1a56a0;font-size:9px;font-weight:700;white-space:nowrap;line-height:1" title="Precio que le diste antes a este cliente">↩ $${(+it._precioAnt).toFixed(2)}</div>`:''}${(+it.costo>0&&+it.precio>0)?`<div id="margen${it._id}" class="no-print" onclick="_infoMargen(${it._id})" style="cursor:pointer;font-size:9px;font-weight:800;line-height:1;color:${((+it.precio-+it.costo)/+it.precio*100)<30?'#c0392b':'#1C6E4A'}" title="Margen — toca para detalle">▣ ${(((+it.precio-+it.costo)/+it.precio)*100).toFixed(0)}%</div>`:''}</td>
+<td class="td-r" style="position:relative">
+  <div style="display:flex;align-items:center;gap:4px">
+    ${(+it.costo>0&&+it.precio>0)?`<div id="margen${it._id}" class="no-print" onclick="_infoMargen(${it._id})" style="cursor:pointer;font-size:9px;font-weight:800;line-height:1;white-space:nowrap;color:${((+it.precio-+it.costo)/+it.precio*100)<30?'#c0392b':'#1C6E4A'}" title="Margen — toca para detalle">▣${(((+it.precio-+it.costo)/+it.precio)*100).toFixed(0)}%</div>`:'<div style="width:28px"></div>'}
+    <input class="ti r" type="number" min="0" step="0.01" value="${esc(it.precio)}" placeholder="0.00" data-id="${it._id}" data-f="precio" oninput="upd(this)" onclick="this.select()" style="flex:1;min-width:0">
+  </div>
+  ${it._precioAnt!=null?`<div class="no-print" onclick="usarPrecioAnterior(${it._id})" style="cursor:pointer;color:#1a56a0;font-size:9px;font-weight:700;white-space:nowrap;line-height:1;text-align:right" title="Precio anterior de este cliente">↩ $${(+it._precioAnt).toFixed(2)}</div>`:''}
+</td>
 <td class="td-c td-iva">${it.iva||0}%</td>
 <td class="td-imp" id="imp${it._id}">${fmt(imp(it))}</td>
 <td class="td-del no-print"><button class="del-btn" onclick="delRow(${it._id})">✕</button></td>`;
@@ -3760,10 +3766,15 @@ async function registrarTodo(){
     }
     _pagoPreparado=null;
 
-    // 3) Actualizar obs con el saldo (aunque no haya pago) y desbloquear PDF
+    // 3) Actualizar obs — sembrar leyenda si está vacío y mostrar balance
     _desbloquearPDF(true);
     const remActiva=remisiones.find(r=>String(r.id)===String(remActualId));
-    if(remActiva){ updateObsBalance(remActiva); } // saldo siempre visible en obs
+    if(remActiva){
+      // Si obs está vacío, sembrar la leyenda corporativa antes de llamar updateObsBalance
+      const _ta=document.getElementById('obs');
+      if(_ta&&!_ta.value.trim()) _ta.value=_LEYENDA_DEFAULT;
+      updateObsBalance(remActiva);
+    }
 
     // F7) Capturar productos escritos a mano (no catalogados) → "Productos Nuevos".
     _capturarProductosNuevos(sn);
