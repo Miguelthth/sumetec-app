@@ -980,14 +980,29 @@ async function heartbeat(){
       // de cobros si la versión cambió (algo nuevo de otro celular) → casi tiempo real
       // sin bajar el JSON entero cada 10s.
       let pd=null; try{pd=await r.clone().json();}catch(_){}
+
+      // ── Cobros: refrescar solo si cambió dataVer ──────────────────────────
       const ver = (pd && pd.ver!=null) ? String(pd.ver) : null;
       if(ver===null){
-        bajarCobros(); // backend viejo sin 'ver' → comportamiento anterior (compatibilidad)
+        bajarCobros(); // backend viejo sin 'ver' → comportamiento anterior
       } else if(ver!==localStorage.getItem('data_ver')){
-        bajarCobros(); // cambió algo → refrescar (bajarCobros guardará el nuevo 'ver')
+        bajarCobros();
         if(document.getElementById('ovHist')?.classList.contains('open')) verHist();
       }
-      // si la versión es igual: no hay nada nuevo → no gastamos datos
+
+      // ── Catálogo: refrescar automático si cambió catVer O si tiene >2h ────
+      const catVer=(pd&&pd.catVer!=null)?String(pd.catVer):null;
+      const catVerLocal=localStorage.getItem('cat_ver');
+      const gsSync=localStorage.getItem('gs_sync');
+      const catViejo=gsSync&&(Date.now()-new Date(gsSync).getTime())>2*3600000; // >2h
+      if(catVer!==null&&catVer!==catVerLocal){
+        // El ERP subió nuevos precios/clientes → descargar silencioso
+        localStorage.setItem('cat_ver',catVer);
+        refrescarCatalogo(true);
+      } else if(!catVer&&catViejo){
+        // Backend viejo sin catVer: refrescar si lleva >2h sin actualizar
+        refrescarCatalogo(true);
+      }
       // Catálogo: refrescar precios solo si cambiaron en el ERP (catVer distinto)
       const cv = (pd && pd.catVer!=null) ? String(pd.catVer) : null;
       if(cv!==null && cv!==localStorage.getItem('cat_ver')){
@@ -1013,12 +1028,24 @@ function _pendientesTotal(){
 // Al volver a la app: refresca.
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){
+    // Al ir a segundo plano: vaciar cola si hay señal (crítico en iOS — puede borrar datos)
     if(isOnline && _pendientesTotal()>0){
       procesarColaElim();procesarColaRemisiones();procesarCola();procesarColaPDF();
     }
+    // Refrescar catálogo en segundo plano si tiene más de 1h (sin gastar datos visibles)
+    const gsSync=localStorage.getItem('gs_sync');
+    if(isOnline&&gsSync&&(Date.now()-new Date(gsSync).getTime())>3600000){
+      refrescarCatalogo(true);
+    }
   } else {
+    // Al volver al frente: heartbeat + aviso de pendientes
     heartbeat();
-    if(_pendientesTotal()>0) toast('⏳ Tienes '+_pendientesTotal()+' sin enviar — se sincroniza solo con señal','warn',4000);
+    const pend=_pendientesTotal();
+    if(pend>0) toast('⏳ '+pend+' sin enviar — sincronizando…','warn',3500);
+    // Si la cola tiene items, procesarlos de inmediato (por si volvió la señal)
+    if(pend>0&&isOnline){
+      setTimeout(()=>{procesarColaElim();procesarColaRemisiones();procesarCola();procesarColaPDF();},500);
+    }
   }
 });
 // Al cerrar la pestaña con datos sin enviar: el navegador muestra su aviso de "¿salir?".
@@ -2763,11 +2790,14 @@ async function refrescarCatalogo(silencioso){
     // Dedup: Maestro prevalece sobre ERP para el mismo nombre (tiene más campos de campo)
     const porNombre=new Map();
     cliERP.forEach(c=>porNombre.set(c.nombre.trim().toLowerCase(),c));
+    // Valores que NO son datos reales (placeholders, "NO", "N/A", etc.)
+    const _esPlaceholder=v=>!v||['n/a','na','sin dato','ninguno','--','nd'].includes(String(v).trim().toLowerCase());
     cliMaestro.forEach(c=>{
       const k=c.nombre.trim().toLowerCase();
       const ya=porNombre.get(k)||{};
-      // Fusionar: Maestro llena los huecos del ERP y agrega lat/lng
-      porNombre.set(k,{...ya,...Object.fromEntries(Object.entries(c).filter(([,v])=>v))});
+      // Fusionar: Maestro solo aporta campos con datos REALES (filtra placeholders)
+      const real=Object.fromEntries(Object.entries(c).filter(([,v])=>v&&!_esPlaceholder(v)));
+      porNombre.set(k,{...ya,...real});
     });
     CLIENTES=[...porNombre.values()];
     localStorage.setItem('gs_cp',JSON.stringify(PRODUCTOS));
