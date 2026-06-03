@@ -2739,17 +2739,42 @@ function loadGSCache(){
 async function refrescarCatalogo(silencioso){
   const url=URL_CATALOGOS; if(!url||!navigator.onLine)return;
   try{
-    const [rP,rC]=await Promise.all([fetch(url+'?tipo=catalogo'),fetch(url+'?tipo=clientes')]);
+    // Traer catálogo, clientes del ERP y clientes de la hoja maestra en paralelo
+    const [rP,rC,rCM]=await Promise.all([
+      fetch(url+'?tipo=catalogo'),
+      fetch(url+'?tipo=clientes'),
+      fetch(url+'?tipo=clientes_maestro').catch(()=>null)  // no falla si backend viejo
+    ]);
     if(!rP.ok||!rC.ok)return;
     const jP=await rP.json(),jC=await rC.json();
+    const jCM=rCM&&rCM.ok?await rCM.json().catch(()=>null):null;
     if(jP.error||jC.error)return;
     PRODUCTOS=jP.map(p=>({clave:p.CODIGO||'',desc:p.DESCRIPCION||'',precio:+p.COSTO_CLIENTE||0,costo:+(p['COSTO PROVEEDOR']||p.COSTO_PROVEEDOR||p.COSTO||0),iva:ivaGlobal})).filter(p=>p.clave);
-    CLIENTES=jC.map(c=>({nombre:c.NOMBRE||'',rfc:c.RFC||'',dir:c.DIRECCION||'',cp:c.CP||'',tel:c.TEL||'',email:c.CORREO||'',contacto:c.CONTACTO||''})).filter(c=>c.nombre);
+    // Clientes: ERP como base, Clientes Maestro como enriquecimiento (gana quien tiene más datos)
+    const _cli=(arr,origen)=>arr.filter(c=>(c.NOMBRE||c.nombre)).map(c=>({
+      nombre:c.NOMBRE||c.nombre||'',rfc:c.RFC||c.rfc||'',
+      dir:c.DIRECCION||c.dir||'',cp:c.CP||c.cp||'',
+      tel:c.TEL||c.tel||'',email:c.CORREO||c.email||'',
+      contacto:c.CONTACTO||c.contacto||'',
+      lat:c.LAT||c.lat||'',lng:c.LNG||c.lng||'',_origen:origen
+    }));
+    const cliERP=_cli(jC,'erp');
+    const cliMaestro=Array.isArray(jCM)?_cli(jCM,'maestro'):[];
+    // Dedup: Maestro prevalece sobre ERP para el mismo nombre (tiene más campos de campo)
+    const porNombre=new Map();
+    cliERP.forEach(c=>porNombre.set(c.nombre.trim().toLowerCase(),c));
+    cliMaestro.forEach(c=>{
+      const k=c.nombre.trim().toLowerCase();
+      const ya=porNombre.get(k)||{};
+      // Fusionar: Maestro llena los huecos del ERP y agrega lat/lng
+      porNombre.set(k,{...ya,...Object.fromEntries(Object.entries(c).filter(([,v])=>v))});
+    });
+    CLIENTES=[...porNombre.values()];
     localStorage.setItem('gs_cp',JSON.stringify(PRODUCTOS));
     localStorage.setItem('gs_cc',JSON.stringify(CLIENTES));
     localStorage.setItem('gs_sync',new Date().toLocaleString('es-MX'));
-    if(!silencioso)toast('Catálogo actualizado ✓ ('+PRODUCTOS.length+' productos)','ok');
-  }catch(e){}
+    if(!silencioso)toast('Catálogo actualizado ✓ ('+PRODUCTOS.length+' productos · '+CLIENTES.length+' clientes)','ok');
+  }catch(e){ console.warn('refrescarCatalogo',e); }
 }
 
 
