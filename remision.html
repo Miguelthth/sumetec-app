@@ -354,6 +354,19 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   <div id="ppLista"></div>
 </div>
 <div id="netBar"><div id="netBarMsg">📵 Sin conexión — todo se guarda y se enviará al volver la señal</div></div>
+<div id="editBanner" class="no-print" style="display:none;position:sticky;top:54px;z-index:191;background:#1a56a0;color:#fff;font-size:12.5px;font-weight:700;text-align:center;padding:8px 16px;box-shadow:0 2px 8px rgba(0,0,0,.25);line-height:1.4">
+  ✏️ <span id="editBannerTxt">Editando remisión</span> — al pulsar <b>REGISTRAR</b> se recalcula y se sobrescribe en Drive.
+  <span style="text-decoration:underline;cursor:pointer;margin-left:6px;white-space:nowrap" onclick="cancelarEdicion()">✕ Cancelar edición</span>
+</div>
+<div class="ov" id="ovPrecarga" style="z-index:965"><div class="modal" style="max-width:480px">
+  <div class="modal-hd"><div class="modal-title">📋 Pedido habitual</div><button class="mx" onclick="closeOv('ovPrecarga')">✕</button></div>
+  <div id="precargaSub" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
+  <div id="precargaLista" style="max-height:52vh;overflow-y:auto"></div>
+  <div style="display:flex;gap:9px;margin-top:14px">
+    <button class="btn" style="flex:1;justify-content:center;padding:11px;background:var(--bg);color:var(--muted)" onclick="closeOv('ovPrecarga')">Cancelar</button>
+    <button class="btn btn-p" style="flex:1;justify-content:center;padding:11px" onclick="_precargaAplicar()">➕ Agregar seleccionados</button>
+  </div>
+</div></div>
 <div class="print-rpt" id="printRpt">
   <img id="prLogo" style="height:44px;width:auto" alt="Logo">
   <div style="text-align:right">
@@ -399,8 +412,9 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
           <button onclick="abrirNuevoCliente()" style="width:100%;padding:7px;background:#E8F5EF;color:#1C6E4A;border:none;border-radius:6px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer">＋ Agregar nuevo cliente</button>
         </div>
       </div>
-      <div class="fr"><span class="fl">Nombre / Razón Social</span><div class="fv"><input id="c_nombre" type="text" placeholder="—" oninput="autosave();_verificarAdeudo(this.value)"></div></div>
+      <div class="fr"><span class="fl">Nombre / Razón Social</span><div class="fv"><input id="c_nombre" type="text" placeholder="—" oninput="autosave();_verificarAdeudo(this.value);_actualizarBtnPrecarga(this.value)"></div></div>
       <div id="adeudoBox" style="display:none;margin:6px 0;padding:10px 12px;background:#fff8e1;border:1.5px solid #f59e0b;border-radius:8px;font-size:12px"></div>
+      <div id="precargaWrap" class="no-print" style="display:none;margin:4px 0"><button onclick="abrirPrecarga()" style="width:100%;padding:9px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">📋 Precargar pedido habitual de este cliente</button></div>
       
       <div class="fr"><span class="fl">Dirección</span><div class="fv"><input id="c_dir" type="text" placeholder="—" oninput="autosave()"></div></div>
       <div class="fr"><span class="fl">C.P.</span><div class="fv"><input id="c_cp" type="text" placeholder="—" oninput="autosave()"></div></div>
@@ -762,6 +776,7 @@ let CLIENTES=[];
 let PRODUCTOS=[];
 let items=[],remisiones=[],_id=1,saveTimer=null,cPanelOpen=false,ivaGlobal=0;
 let remActualId=null;
+let _modoEdicion=null; // id de la remisión que se está editando desde Historial (F3)
 
 // ── Persistencia segura (a prueba de cuota y corrupción) ──────
 // Toda escritura pasa por aquí: si localStorage está lleno o falla,
@@ -1078,7 +1093,7 @@ function aplicarPago(rem, monto, opts){
     updateObsBalance(rem);
   } else if(rem.data){
     const bloque=_obsLineasPagos(rem);
-    rem.data.obs=(rem.data.obs||'').replace(/\n?(?:--- BALANCE ---|=== PAGOS ===|--- PAGOS ---)[\s\S]*/,'').trimEnd();
+    rem.data.obs=(rem.data.obs||'').replace(/\n?(?:--- BALANCE ---|=== PAGOS ===|--- PAGOS ---|Gracias por su compra)[\s\S]*/,'').trimEnd();
     rem.data.obs+=bloque?(rem.data.obs?'\n\n':'')+bloque:'';
   }
   if(rem.data) rem.data.pagos=[...rem.pagos];
@@ -1247,8 +1262,27 @@ function cargarFolioRemoto(){
 function enviarNuevoADrive(tipo,datos){
   const url=getScriptUrl();if(!url)return;
   fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
-    body:JSON.stringify({tipo,...datos})
+    body:JSON.stringify({tipo,token:API_TOKEN,...datos}) // incluir token (si no, el servidor rechaza)
   }).catch(()=>{});
+}
+// F7: captura los productos escritos A MANO (que no están en el catálogo) en "Productos Nuevos",
+// igual que los clientes se capturan solos. Es un buzón para revisar e importar a tu ERP.
+function _capturarProductosNuevos(sn){
+  try{
+    if(!getScriptUrl())return;
+    const enviados=new Set(JSON.parse(localStorage.getItem('prod_capturados')||'[]'));
+    const enCatalogo=new Set(PRODUCTOS.map(p=>String(p.clave||'').toLowerCase()));
+    let cambio=false;
+    (sn.items||[]).forEach(it=>{
+      const clave=String(it.clave||'').trim(), desc=String(it.desc||'').trim(), precio=+it.precio||0;
+      if(!clave||!desc||precio<=0)return;
+      const k=clave.toLowerCase();
+      if(enCatalogo.has(k)||enviados.has(k))return;
+      enviarNuevoADrive('nuevo_producto',{clave,desc,precio,iva:+it.iva||16});
+      enviados.add(k); cambio=true;
+    });
+    if(cambio)localStorage.setItem('prod_capturados',JSON.stringify([...enviados]));
+  }catch(e){}
 }
 
 // Captura GPS preciso (solo se llama cuando el cliente no tiene dirección registrada).
@@ -1395,7 +1429,7 @@ function renderTable(){
 <td class="td-c"><input class="ti c" type="number" min="0" value="${esc(it.qty)}" placeholder="0" data-id="${it._id}" data-f="qty" oninput="upd(this)" onclick="this.select()"></td>
 <td class="td-cl" style="position:relative"><input class="ti cl" type="text" value="${esc(it.clave)}" placeholder="CÓDIGO" data-id="${it._id}" data-f="clave" oninput="upd(this);showPP(this)" onblur="hidePP(this)" onclick="this.select();showPP(this)"><div class="sp" id="pp${it._id}" style="top:34px;left:0;min-width:280px" onmousedown="event.preventDefault()"></div></td>
 <td><input class="ti" type="text" value="${esc(it.desc)}" placeholder="Descripción" data-id="${it._id}" data-f="desc" oninput="upd(this)"></td>
-<td class="td-r"><input class="ti r" type="number" min="0" step="0.01" value="${esc(it.precio)}" placeholder="0.00" data-id="${it._id}" data-f="precio" oninput="upd(this)" onclick="this.select()"></td>
+<td class="td-r"><input class="ti r" type="number" min="0" step="0.01" value="${esc(it.precio)}" placeholder="0.00" data-id="${it._id}" data-f="precio" oninput="upd(this)" onclick="this.select()">${it._precioAnt!=null?`<div class="no-print" onclick="usarPrecioAnterior(${it._id})" style="cursor:pointer;color:#1a56a0;font-size:9px;font-weight:700;margin-top:1px;white-space:nowrap" title="Precio que le diste antes a este cliente">↩ usar $${(+it._precioAnt).toFixed(2)}</div>`:''}${(+it.costo>0&&+it.precio>0)?`<div class="no-print" onclick="_infoMargen(${it._id})" style="cursor:pointer;font-size:9px;font-weight:700;margin-top:1px;color:${((+it.precio-+it.costo)/+it.precio*100)<30?'#c0392b':'#1C6E4A'}" title="Margen sobre costo (toca para detalle)">▣ ${(((+it.precio-+it.costo)/+it.precio)*100).toFixed(0)}%</div>`:''}</td>
 <td class="td-c td-iva">${it.iva||0}%</td>
 <td class="td-imp" id="imp${it._id}">${fmt(imp(it))}</td>
 <td class="td-del no-print"><button class="del-btn" onclick="delRow(${it._id})">✕</button></td>`;
@@ -1430,6 +1464,10 @@ function showPP(input){
   pp.classList.add('open');
 }
 function _ppFiltrar(q){
+  // B5: si el catálogo en memoria está vacío (offline o no sembrado), recuperarlo de la caché.
+  if(!PRODUCTOS.length){
+    try{const cp=localStorage.getItem('gs_cp'); if(cp)PRODUCTOS=JSON.parse(cp).map(p=>({...p,iva:ivaGlobal}));}catch(e){}
+  }
   const ql=q.toLowerCase().trim();
   _ppResultados=ql?PRODUCTOS.filter(p=>
     p.clave.toLowerCase().includes(ql)||
@@ -1437,7 +1475,12 @@ function _ppFiltrar(q){
   ).slice(0,25):PRODUCTOS.slice(0,25);
   const lista=document.getElementById('ppLista');if(!lista)return;
   if(!_ppResultados.length){
-    lista.innerHTML='<div style="padding:12px;text-align:center;font-size:12px;color:var(--muted)">Sin resultados</div>';
+    const sinCatalogo=!PRODUCTOS.length;
+    const msg=sinCatalogo
+      ? (navigator.onLine?'Catálogo vacío — abre ⚙️ Catálogos para descargarlo':'📵 Catálogo no disponible sin conexión. Conéctate una vez para descargarlo.')
+      : 'Sin resultados';
+    lista.innerHTML='<div style="padding:12px;text-align:center;font-size:12px;color:var(--muted)">'+msg+'</div>'
+      +'<div class="pp-item" style="border-top:2px solid var(--border);color:var(--green);font-weight:700;font-size:12px;grid-column:1/-1" onclick="_ppNuevo()">＋ Agregar nuevo producto</div>';
     return;
   }
   lista.innerHTML=_ppResultados.map((p,i)=>{
@@ -1450,11 +1493,112 @@ function _ppFiltrar(q){
   }).join('')+
   `<div class="pp-item" style="border-top:2px solid var(--border);color:var(--green);font-weight:700;font-size:12px;grid-column:1/-1" onclick="_ppNuevo()">＋ Agregar nuevo producto</div>`;
 }
+// F5: último precio que se le dio a ESTE cliente por ESTE producto (del historial local).
+// Devuelve {precio, folio, fecha} o null. Permite avisar si el precio genérico difiere.
+function _precioAnteriorCliente(clave){
+  const cli=(document.getElementById('c_nombre')?.value||'').trim().toLowerCase();
+  if(!cli||!clave)return null;
+  const cv=String(clave).toLowerCase();
+  // remisiones está ordenada con la más nueva al frente (unshift) → primera coincidencia = última venta
+  for(const r of remisiones){
+    if(String(r.cliente||'').trim().toLowerCase()!==cli)continue;
+    const its=(r.data&&r.data.items)||[];
+    for(const it of its){
+      if(String(it.clave||'').toLowerCase()===cv && +it.precio>0){
+        return {precio:+it.precio, folio:r.folio, fecha:r.fecha};
+      }
+    }
+  }
+  return null;
+}
 function _ppSel(idx){
   const p=_ppResultados[idx];if(!p||_ppRowId==null)return;
   const it=items.find(i=>i._id===_ppRowId);if(!it)return;
   it.clave=p.clave;it.desc=p.desc;it.precio=p.precio||'';it.iva=ivaGlobal;
+  if(p.costo!=null)it.costo=+p.costo||0; // F5: costo (cuando el ERP lo exporte) → margen
+  // F5: ¿le diste antes otro precio a este cliente por este producto?
+  const ant=_precioAnteriorCliente(p.clave);
+  it._precioAnt=(ant && Math.abs(ant.precio-(+it.precio||0))>0.009)?ant.precio:null;
   renderTable();calcTotals();_ppCerrar();
+  if(it._precioAnt!=null){
+    toast('💡 A este cliente le diste antes $'+it._precioAnt.toFixed(2)+' (sugerido $'+(+it.precio||0).toFixed(2)+'). Toca "↩ usar anterior" en la fila.','warn',6000);
+  }
+}
+// F5: aplicar el precio anterior del cliente a una fila.
+function usarPrecioAnterior(rowId){
+  const it=items.find(i=>i._id===rowId);if(!it||it._precioAnt==null)return;
+  it.precio=it._precioAnt; it._precioAnt=null;
+  renderTable();calcTotals();
+  toast('Precio anterior aplicado ✓','ok');
+}
+// F5: detalle de margen (cuando el ERP exporte el COSTO del producto).
+function _infoMargen(rowId){
+  const it=items.find(i=>i._id===rowId);if(!it)return;
+  const c=+it.costo||0,p=+it.precio||0;
+  if(p<=0){toast('Sin precio','warn');return;}
+  const util=p-c, m=util/p*100;
+  alert('Margen — '+(it.clave||it.desc||'producto')+'\n\n'
+    +'Precio: $'+p.toFixed(2)+'\nCosto: $'+c.toFixed(2)+'\nUtilidad: $'+util.toFixed(2)+'\nMargen: '+m.toFixed(1)+'%'
+    +(m<30?'\n\n⚠️ Margen MENOR al 30%':'\n\n✓ Margen igual o mayor al 30%'));
+}
+
+// ── F6: Precarga del pedido habitual del cliente ──────────────────────────────
+function _normCli(s){return String(s||'').trim().toLowerCase().replace(/\s+/g,' ');}
+// Items de la última remisión LOCAL de ese cliente (con productos).
+function _pedidoHabitualCliente(nombre){
+  const cli=_normCli(nombre); if(!cli)return [];
+  for(const r of remisiones){
+    if(_normCli(r.cliente)!==cli)continue;
+    const its=((r.data&&r.data.items)||[]).filter(i=>(i.clave||i.desc)&&(+i.qty>0));
+    if(its.length)return its.map(i=>({clave:i.clave||'',desc:i.desc||'',qty:+i.qty||1,precioHist:+i.precio||0,folio:r.folio,fecha:r.fecha}));
+  }
+  return [];
+}
+function _actualizarBtnPrecarga(nombre){
+  const w=document.getElementById('precargaWrap'); if(!w)return;
+  w.style.display=_pedidoHabitualCliente(nombre).length?'block':'none';
+}
+function _precioCatalogo(clave){
+  const p=PRODUCTOS.find(x=>String(x.clave).toLowerCase()===String(clave).toLowerCase());
+  return p?(+p.precio||0):null;
+}
+let _precargaItems=[];
+function abrirPrecarga(){
+  const nombre=document.getElementById('c_nombre')?.value||'';
+  _precargaItems=_pedidoHabitualCliente(nombre);
+  if(!_precargaItems.length){toast('Este cliente no tiene pedidos anteriores en este celular','warn');return;}
+  const sub=document.getElementById('precargaSub');
+  if(sub)sub.textContent='Último pedido de '+nombre+' ('+_precargaItems[0].folio+' · '+_precargaItems[0].fecha+'). Elige productos y precio:';
+  const lista=document.getElementById('precargaLista');
+  lista.innerHTML=_precargaItems.map((it,i)=>{
+    const sug=_precioCatalogo(it.clave);
+    const sugLbl=sug!=null?('Sugerido $'+sug.toFixed(2)):'';
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:8px">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="pc_chk${i}" checked> ${esc(it.clave)} · ${esc(it.desc)}
+      </label>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:6px;font-size:12px;flex-wrap:wrap">
+        <span>Cant: <input id="pc_qty${i}" type="number" min="0" step="1" value="${it.qty}" style="width:62px;padding:3px 6px;border:1px solid var(--border);border-radius:6px"></span>
+        <label style="cursor:pointer"><input type="radio" name="pc_pr${i}" value="hist" checked> Histórico $${it.precioHist.toFixed(2)}</label>
+        ${sug!=null?`<label style="cursor:pointer"><input type="radio" name="pc_pr${i}" value="sug"> ${sugLbl}</label>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('ovPrecarga').classList.add('open');
+}
+function _precargaAplicar(){
+  let agregados=0;
+  _precargaItems.forEach((it,i)=>{
+    const chk=document.getElementById('pc_chk'+i); if(!chk||!chk.checked)return;
+    const qty=+(document.getElementById('pc_qty'+i)||{}).value||0; if(qty<=0)return;
+    const prSel=(document.querySelector('input[name="pc_pr'+i+'"]:checked')||{}).value||'hist';
+    const sug=_precioCatalogo(it.clave);
+    const precio=(prSel==='sug'&&sug!=null)?sug:it.precioHist;
+    items.push({_id:_id++,qty:qty,clave:it.clave,desc:it.desc,precio:precio,iva:ivaGlobal});
+    agregados++;
+  });
+  renderTable();calcTotals();closeOv('ovPrecarga');
+  toast(agregados?('Precargados '+agregados+' producto(s) ✓'):'Nada seleccionado','warn');
 }
 function _ppNuevo(){
   const ps=document.getElementById('ppSearch');
@@ -1491,6 +1635,7 @@ function selCliente(idx){
   const c=CLIENTES[idx];if(!c)return;
   ['nombre','dir','cp','tel','rfc','email','contacto'].forEach(f=>{const el=document.getElementById('c_'+f);if(el)el.value=c[f]||''});
   document.getElementById('cPanel').classList.remove('open');cPanelOpen=false;autosave();
+  _actualizarBtnPrecarga(c.nombre); // F6: mostrar precarga si tiene pedidos anteriores
 }
 document.addEventListener('click',e=>{
   const p=document.getElementById('cPanel');
@@ -1500,9 +1645,12 @@ document.addEventListener('click',e=>{
 // Fuente única de verdad para el cálculo financiero.
 // Devuelve {sub, iva, desc, tot, arts, pzs} con el mismo redondeo en todos los contextos.
 function _calcTot(arr,descPct){
+  // El DESCUENTO se aplica al SUBTOTAL ANTES del IVA: el IVA se calcula sobre la
+  // base ya descontada (estándar de facturación MX). Así descontar también baja el IVA.
   let sub=0,iva=0,arts=0,pzs=0;
-  arr.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const i=q*p;sub+=i;iva+=i*(v/100);arts++;pzs+=q;}});
-  const desc=sub*((+descPct||0)/100),totRaw=sub+iva-desc;
+  const pct=(+descPct||0)/100;
+  arr.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const base=q*p;sub+=base;iva+=base*(1-pct)*(v/100);arts++;pzs+=q;}});
+  const desc=sub*pct,totRaw=sub-desc+iva;
   return{sub,iva,desc,tot:iva===0?Math.round(totRaw):Math.round(totRaw*100)/100,arts,pzs};
 }
 function calcTotals(){
@@ -2136,8 +2284,8 @@ function renderRems(list){
     const accionCobrar=r.estado!=='pagado'&&r.estado!=='cancelada'
       ?`<button class="btn" style="padding:4px 8px;font-size:11px;background:#e8f5ef;color:#1C6E4A;border:1px solid #a7f3d0;border-radius:6px" onclick="event.stopPropagation();abrirPagoRapido('${r.id||r.folio}','${r.folio}',${!esServidor})">💰 Cobrar</button>`
       :'';
-    const accionModificar=tieneItems&&r.estado!=='cancelada'&&r.estado!=='pagado'
-      ?`<button class="btn" style="padding:4px 8px;font-size:11px;background:#e0f0ff;color:#1a56a0;border:1px solid #bfdbfe;border-radius:6px" onclick="event.stopPropagation();modificarRem('${r.id}')">✏️</button>`
+    const accionModificar=tieneItems&&r.estado!=='cancelada'
+      ?`<button class="btn" style="padding:4px 8px;font-size:11px;background:#e0f0ff;color:#1a56a0;border:1px solid #bfdbfe;border-radius:6px" onclick="event.stopPropagation();modificarRem('${r.id}')" title="Modificar">✏️</button>`
       :'';
     const accionCancelar=r.estado!=='cancelada'
       ?`<button class="btn" style="padding:4px 8px;font-size:11px;background:#fff0f0;color:#c0392b;border:1px solid #fecaca;border-radius:6px" onclick="event.stopPropagation();abrirCancelacion('${r.id}','${r.folio}')">🚫</button>`
@@ -2164,19 +2312,37 @@ function loadRem(id){
   _ocultarAdeudo();
   renderPagos();updateObsBalance(r);_desbloquearPDF(true);toast('Remisión '+r.folio+' cargada','ok');
 }
-// ── Modificar remisión existente ──────────────────────────────
+// ── Modificar remisión existente (F3) ─────────────────────────
+// Reabre la venta TAL CUAL (items, pagos, cliente). Conserva el historial de pagos:
+// al REGISTRAR se recalcula el saldo = total − pagos (puede pasar de pagado→abono) y se
+// sobrescribe en Drive. Sirve para cualquier estado (pendiente/abono/pagado).
 function modificarRem(id){
   const r=remisiones.find(x=>String(x.id)===String(id));
   if(!r){toast('No se encontró la remisión','err');return;}
   if(!r.data){toast('Esta remisión no tiene detalle local para modificar','warn');return;}
-  // Cargar en formulario igual que loadRem pero dejando r.sincronizado=false
   restore(r.data);renderTable();calcTotals();closeOv('ovHist');
   remActualId=r.id;
-  // Limpiar pagos para que el asesor los reasigne
-  r.pagos=[];r.saldo=r.total;r.estado='pendiente';r.sincronizado=false;
-  _desbloquearPDF(false); // bloquear PDF hasta re-registrar
-  renderPagos();
-  toast('Remisión '+r.folio+' cargada para modificar — haz cambios y pulsa REGISTRAR','ok',5000);
+  _modoEdicion=r.id;
+  r.sincronizado=false;
+  _ocultarAdeudo();
+  renderPagos();updateObsBalance(r);
+  _desbloquearPDF(true);
+  // Banner de aviso
+  const eb=document.getElementById('editBanner');
+  const ebt=document.getElementById('editBannerTxt');
+  if(ebt)ebt.textContent='Editando '+r.folio+(r.estado==='pagado'?' (estaba PAGADA)':r.estado==='abono'?' (tiene abonos)':'');
+  if(eb)eb.style.display='block';
+  window.scrollTo({top:0,behavior:'smooth'});
+  toast('✏️ '+r.folio+' abierta para modificar — al REGISTRAR se sobrescribe en Drive','ok',5000);
+}
+function cancelarEdicion(){
+  _salirModoEdicion();
+  _limpiarFormulario(); // limpia el formulario y arranca uno nuevo
+  toast('Edición cancelada','ok');
+}
+function _salirModoEdicion(){
+  _modoEdicion=null;
+  const eb=document.getElementById('editBanner');if(eb)eb.style.display='none';
 }
 
 function delRem(id){
@@ -2259,6 +2425,7 @@ function _limpiarFormulario(){
   const dp2=document.getElementById('d_pago');if(dp2)dp2.selectedIndex=0;
   const dc=document.getElementById('descPct');if(dc)dc.value='0';
   remActualId=null;_pagoPreparado=null;
+  _salirModoEdicion();
   borrarFirma();
   _ocultarAdeudo();
   _desbloquearPDF(false);
@@ -2389,7 +2556,7 @@ async function conectarGS(){
     const jP=await rP.json(),jC=await rC.json();
     if(jP.error)throw new Error(jP.error);
     if(jC.error)throw new Error(jC.error);
-    PRODUCTOS=jP.map(p=>({clave:p.CODIGO||'',desc:p.DESCRIPCION||'',precio:+p.COSTO_CLIENTE||0,iva:ivaGlobal})).filter(p=>p.clave);
+    PRODUCTOS=jP.map(p=>({clave:p.CODIGO||'',desc:p.DESCRIPCION||'',precio:+p.COSTO_CLIENTE||0,costo:+(p['COSTO PROVEEDOR']||p.COSTO_PROVEEDOR||p.COSTO||0),iva:ivaGlobal})).filter(p=>p.clave);
     CLIENTES=jC.map(c=>({nombre:c.NOMBRE||'',rfc:c.RFC||'',dir:c.DIRECCION||'',cp:c.CP||'',tel:c.TEL||'',email:c.CORREO||'',contacto:c.CONTACTO||''})).filter(c=>c.nombre);
     localStorage.setItem('gs_url',url);
     localStorage.setItem('gs_cp',JSON.stringify(PRODUCTOS));
@@ -2427,7 +2594,7 @@ async function refrescarCatalogo(silencioso){
     if(!rP.ok||!rC.ok)return;
     const jP=await rP.json(),jC=await rC.json();
     if(jP.error||jC.error)return;
-    PRODUCTOS=jP.map(p=>({clave:p.CODIGO||'',desc:p.DESCRIPCION||'',precio:+p.COSTO_CLIENTE||0,iva:ivaGlobal})).filter(p=>p.clave);
+    PRODUCTOS=jP.map(p=>({clave:p.CODIGO||'',desc:p.DESCRIPCION||'',precio:+p.COSTO_CLIENTE||0,costo:+(p['COSTO PROVEEDOR']||p.COSTO_PROVEEDOR||p.COSTO||0),iva:ivaGlobal})).filter(p=>p.clave);
     CLIENTES=jC.map(c=>({nombre:c.NOMBRE||'',rfc:c.RFC||'',dir:c.DIRECCION||'',cp:c.CP||'',tel:c.TEL||'',email:c.CORREO||'',contacto:c.CONTACTO||''})).filter(c=>c.nombre);
     localStorage.setItem('gs_cp',JSON.stringify(PRODUCTOS));
     localStorage.setItem('gs_cc',JSON.stringify(CLIENTES));
@@ -2942,13 +3109,20 @@ function descargarPDF(remOverride, forzarDescarga){
     const _obsSinCanc=_canc_obs_text
       ? obs_.slice(0,obs_.lastIndexOf('\n'+_canc_obs_text)).trimEnd()||obs_.replace(_canc_obs_text,'').trimEnd()
       : obs_;
+    // El texto NUNCA debe salir del cuadro: limitamos el total de líneas (normales + rojas
+    // de cancelación) a las que caben en el alto del bloque, reservando primero las rojas.
+    const _obsMaxLines=Math.max(1,Math.floor((blkH-13)/2.8));
+    doc.setFont('helvetica','bold').setFontSize(7.5);
+    const _cancLines=_canc_obs_text?doc.splitTextToSize(_canc_obs_text,obsW-10):[];
     doc.setFont('helvetica','normal').setFontSize(7.5).setTextColor(...MUT);
-    const _obsNormLines=doc.splitTextToSize(_obsSinCanc,obsW-10);
+    let _obsNormLines=doc.splitTextToSize(_obsSinCanc,obsW-10);
+    const _maxNorm=Math.max(0,_obsMaxLines-_cancLines.length);
+    if(_obsNormLines.length>_maxNorm) _obsNormLines=_obsNormLines.slice(0,_maxNorm);
     doc.text(_obsNormLines,ML+5,y+10);
     if(_canc_obs_text){
       const _obsNormH=_obsNormLines.length*2.8;
       doc.setFont('helvetica','bold').setFontSize(7.5).setTextColor(192,57,43);
-      doc.text(doc.splitTextToSize(_canc_obs_text,obsW-10),ML+5,y+10+_obsNormH);
+      doc.text(_cancLines,ML+5,y+10+_obsNormH);
       doc.setFont('helvetica','normal').setTextColor(...MUT);
     }
 
@@ -3292,8 +3466,22 @@ function _desbloquearPDF(si){
   if(si){btn.disabled=false;btn.style.opacity='1';btn.style.cursor='pointer';btn.innerHTML='⬇️ Descargar PDF';}
   else{btn.disabled=true;btn.style.opacity='.45';btn.style.cursor='not-allowed';btn.innerHTML='🔒 PDF';}
 }
+// F1: valida que NO falten datos antes de descargar/generar el PDF.
+// Devuelve un string con el problema, o '' si todo está completo.
+function _faltanDatos(){
+  const nombre=(document.getElementById('c_nombre')?.value||'').trim();
+  if(!nombre) return 'Falta el NOMBRE del cliente.';
+  const incompletos=items.filter(i=>(+i.qty>0)&&(!(String(i.desc||'').trim())||!(+i.precio>0)));
+  if(incompletos.length){
+    const lista=incompletos.map(i=>'• '+((i.clave||i.desc||'producto sin nombre'))).join('\n');
+    return 'Hay productos con cantidad pero sin descripción o sin precio:\n'+lista;
+  }
+  return '';
+}
 function descargarPDFSiRegistrado(){
   if(!remActualId){toast('Pulsa REGISTRAR primero para guardar la remisión','warn',3500);return;}
+  const falta=_faltanDatos();
+  if(falta){ toast('⚠️ No se puede descargar: '+falta.split('\n')[0],'err',5000); alert('No se puede descargar el PDF:\n\n'+falta); return; }
   const rem=remisiones.find(r=>String(r.id)===String(remActualId));
   if(rem&&rem.data){
     // forzarDescarga=true → genera desde datos guardados (con pagos actualizados) Y descarga al celular
@@ -3372,6 +3560,15 @@ async function registrarTodo(){
     _desbloquearPDF(true);
     const remActiva=remisiones.find(r=>String(r.id)===String(remActualId));
     if(remActiva){ updateObsBalance(remActiva); } // saldo siempre visible en obs
+
+    // F7) Capturar productos escritos a mano (no catalogados) → "Productos Nuevos".
+    _capturarProductosNuevos(sn);
+
+    // F3) Si veníamos editando desde Historial, avisar y salir del modo edición.
+    if(_modoEdicion){
+      _salirModoEdicion();
+      toast('✅ Remisión actualizada y sobrescrita en Drive','ok',4500);
+    }
 
     // 4) Mostrar pantalla de confirmación (adeudo / pagado)
     if(remActiva) _mostrarConfirmacion(remActiva);
@@ -3484,7 +3681,7 @@ function updateObsBalance(r){
   const ta=document.getElementById('obs');
   if(!ta)return;
   const _syncData=()=>{if(r&&r.data)r.data.obs=ta.value;};
-  let txt=ta.value.replace(/\n?(?:--- BALANCE ---|=== PAGOS ===|--- PAGOS ---)[\s\S]*/,'').trimEnd();
+  let txt=ta.value.replace(/\n?(?:--- BALANCE ---|=== PAGOS ===|--- PAGOS ---|Gracias por su compra)[\s\S]*/,'').trimEnd();
   const bloque=_obsLineasPagos(r);
   ta.value=bloque?txt+(txt?'\n\n':'')+bloque:txt;
   _syncData();

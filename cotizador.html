@@ -895,8 +895,9 @@ document.addEventListener('click',e=>{
 
 function calcTotals(){
   let sub=0,iva=0,arts=0,pzs=0;
-  items.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const i=q*p;sub+=i;iva+=i*(v/100);arts++;pzs+=q;}});
-  const dp=+document.getElementById('descPct').value||0,desc=sub*(dp/100),tot=sub+iva-desc;
+  const pct=(+document.getElementById('descPct').value||0)/100; // descuento al SUBTOTAL antes de IVA
+  items.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const i=q*p;sub+=i;iva+=i*(1-pct)*(v/100);arts++;pzs+=q;}});
+  const desc=sub*pct,tot=sub-desc+iva;
   document.getElementById('tSub').textContent=fmt(sub);
   document.getElementById('tIva').textContent=fmt(iva);
   document.getElementById('tDesc').textContent=fmt(desc);
@@ -962,8 +963,9 @@ function crearRem(){
   const ymd=now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
   const folio='REM-'+ymd+'-'+String(remisiones.length+1).padStart(3,'0');
   let sub=0,iva=0;
-  sn.items.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const i=q*p;sub+=i;iva+=i*(v/100);}});
-  const tot=sub+iva-sub*((+sn.descPct||0)/100);
+  const _pct=(+sn.descPct||0)/100; // descuento al SUBTOTAL antes de IVA
+  sn.items.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const i=q*p;sub+=i;iva+=i*(1-_pct)*(v/100);}});
+  const tot=sub-sub*_pct+iva;
   remisiones.unshift({id:Date.now(),folio,fecha:now.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'}),cliente:sn.c_nombre||'Sin nombre',total:tot,data:{...sn,folio}});
   localStorage.setItem('s_rems',JSON.stringify(remisiones));
   restore({...sn,folio});document.getElementById('folioBadge').innerText=folio;syncFolio(folio);
@@ -1342,12 +1344,13 @@ function descargarPDF(remOverride){
     const _itemsSrc = _regen ? (_d.items||[]) : items;
     const activeItems = _itemsSrc.filter(it=>it.clave||it.desc||(+it.qty>0));
     let sub=0,ivaT=0,arts=0,pzs=0;
+    const dp=+(_regen ? _d.descPct : document.getElementById('descPct').value)||0;
+    const _pct=dp/100; // descuento al SUBTOTAL antes de IVA
     activeItems.forEach(it=>{
       const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;
-      if(q>0&&p>0){const i=q*p;sub+=i;ivaT+=i*(v/100);arts++;pzs+=q;}
+      if(q>0&&p>0){const i=q*p;sub+=i;ivaT+=i*(1-_pct)*(v/100);arts++;pzs+=q;}
     });
-    const dp=+(_regen ? _d.descPct : document.getElementById('descPct').value)||0;
-    const desc_=sub*(dp/100), tot=sub+ivaT-desc_;
+    const desc_=sub*_pct, tot=sub-desc_+ivaT;
 
     // ── jsPDF init ───────────────────────────────────────
     const {jsPDF} = window.jspdf;
