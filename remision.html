@@ -5099,23 +5099,9 @@ async function _generarCotizacion(){
     }
 
     // ── Subir a Drive ──
-    if(!isOnline){toast('📵 Sin conexión — se subirá a Drive al volver la señal','warn',5000);}
-    else{
-      toast('☁️ Subiendo a Drive…','loading',0);
-      try{
-        const url=getScriptUrl();
-        const body={tipo:'cotizacion',token:API_TOKEN,id,folio,cliente:nombre,fecha:fechaTxt,total,filename,pdf:b64,
-          device:DEVICE_ID,horaDescarga:now.toLocaleTimeString('es-MX'),
-          lat:gps?.lat||'',lng:gps?.lng||'',
-          datosCliente:{nombre,tel:data.c_tel,dir:data.c_dir,cp:data.c_cp,rfc:data.c_rfc}};
-        const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)}).then(x=>x.json());
-        if(res?.ok){
-          _cotDesencolar(id);
-          if(res.folio&&res.folio!==folio&&folioEl)folioEl.innerText=res.folio;
-          toast('✅ Cotización guardada · '+(res.folio||folio),'ok',4000);
-        }else{toast('⚠️ Guardada localmente — se reintentará al reconectar','warn',4000);}
-      }catch(e){toast('⚠️ Guardada localmente — se reintentará al reconectar','warn',4000);}
-    }
+    // NOTA: NO enviar inmediatamente. Solo encolar. _procesarColaCotR() lo maneja.
+    // Razón: si hay error o desconexión, no duplicamos el PDF.
+    toast(isOnline ? '☁️ Cotización en cola para sincronizar…' : '📵 Sin conexión — se subirá al volver la señal','ok',3000);
   }catch(e){
     if(iosWin)try{iosWin.close()}catch(_){}
     toast('Error: '+e.message,'err');console.error('_generarCotizacion',e);
