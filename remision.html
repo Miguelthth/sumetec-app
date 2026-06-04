@@ -4779,8 +4779,15 @@ async function _procesarColaCotR(){
       const fn='COTIZACION_'+folio+'_'+cli+'.pdf';
       const body={tipo:'cotizacion',token:API_TOKEN,id:entry.id,folio,cliente:entry.cliente,
         fecha:entry.fecha,total:entry.total,filename:fn,pdf:b64,device:DEVICE_ID,
-        datosCliente:{nombre:entry.data?.c_nombre||entry.cliente,tel:entry.data?.c_tel||'',
-          dir:entry.data?.c_dir||'',cp:entry.data?.c_cp||'',rfc:entry.data?.c_rfc||''}};
+        datosCliente:{
+          nombre:   entry.data?.c_nombre||entry.cliente,
+          tel:      entry.data?.c_tel||'',
+          dir:      entry.data?.c_dir||'',
+          cp:       entry.data?.c_cp||'',
+          rfc:      entry.data?.c_rfc||'',
+          contacto: entry.data?.c_contacto||'',
+          email:    entry.data?.c_email||''
+        }};
       const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)}).then(x=>x.json());
       if(res&&res.ok){
         _cotDesencolar(entry.id);
