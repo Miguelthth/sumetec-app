@@ -1019,6 +1019,7 @@ async function heartbeat(){
     setOnlineState(r.ok||r.status===0);
     if(isOnline){
       procesarColaElim(); // procesa borrados pendientes
+      _procesarColaCotR(); // procesa cotizaciones pendientes
       // AHORRO DE DATOS: el ping liviano trae un número de versión que el servidor
       // sube cada vez que cambian remisiones/pagos. Solo descargamos la lista COMPLETA
       // de cobros si la versión cambió (algo nuevo de otro celular) → casi tiempo real
@@ -1058,14 +1059,15 @@ async function heartbeat(){
 }
 
 function startHeartbeat(){heartbeat();_hbTimer=setInterval(heartbeat,10000);}
-window.addEventListener('online',()=>{heartbeat();setTimeout(procesarColaElim,900);setTimeout(procesarColaRemisiones,1500);setTimeout(procesarCola,2100);setTimeout(procesarColaPDF,2700);});
+window.addEventListener('online',()=>{heartbeat();setTimeout(procesarColaElim,900);setTimeout(procesarColaRemisiones,1500);setTimeout(procesarCola,2100);setTimeout(procesarColaPDF,2700);setTimeout(_procesarColaCotR,3300);});
 window.addEventListener('offline',()=>setOnlineState(false));
 
 // C) Recordatorio/seguridad al salir o pasar a segundo plano.
 // Cuenta lo que falta por enviar (pagos+remisiones+pdfs+borrados).
 function _pendientesTotal(){
   return leerSeguro('cola_offline',[]).length+leerSeguro('cola_remisiones',[]).length
-       +leerSeguro('cola_pdf',[]).length+leerSeguro('cola_elim',[]).length;
+       +leerSeguro('cola_pdf',[]).length+leerSeguro('cola_elim',[]).length
+       +leerSeguro('cola_cot_r',[]).length; // cotizaciones pendientes
 }
 // Al minimizar/cambiar de app: si hay señal, intenta vaciar las colas en segundo plano
 // (clave en iPhone, que puede borrar los datos tras ~7 días sin abrir la app).
@@ -1074,7 +1076,7 @@ document.addEventListener('visibilitychange',()=>{
   if(document.hidden){
     // Al ir a segundo plano: vaciar cola si hay señal (crítico en iOS — puede borrar datos)
     if(isOnline && _pendientesTotal()>0){
-      procesarColaElim();procesarColaRemisiones();procesarCola();procesarColaPDF();
+      procesarColaElim();procesarColaRemisiones();procesarCola();procesarColaPDF();_procesarColaCotR();
     }
     // Refrescar catálogo en segundo plano si tiene más de 1h (sin gastar datos visibles)
     const gsSync=localStorage.getItem('gs_sync');
@@ -1088,7 +1090,7 @@ document.addEventListener('visibilitychange',()=>{
     if(pend>0) toast('⏳ '+pend+' sin enviar — sincronizando…','warn',3500);
     // Si la cola tiene items, procesarlos de inmediato (por si volvió la señal)
     if(pend>0&&isOnline){
-      setTimeout(()=>{procesarColaElim();procesarColaRemisiones();procesarCola();procesarColaPDF();},500);
+      setTimeout(()=>{procesarColaElim();procesarColaRemisiones();procesarCola();procesarColaPDF();_procesarColaCotR();},500);
     }
   }
 });
@@ -4581,6 +4583,10 @@ function toast(msg,type='',dur=2800){const t=document.getElementById('toast');cl
      PDFs → Drive/COTIZACIONES/  ·  Sheets → "Cotizaciones"  ·  Folio SUM-
      ═══════════════════════════════════════════════════════════════════════════ -->
 <section id="secCot" style="display:none">
+<div id="cotEditBanner" class="no-print" style="display:none;position:sticky;top:54px;z-index:191;background:#1a56a0;color:#fff;font-size:12.5px;font-weight:700;text-align:center;padding:8px 16px;box-shadow:0 2px 8px rgba(0,0,0,.25);line-height:1.4">
+  ✏️ <span id="cotEditBannerTxt">Editando cotización</span> — al generar el PDF se actualiza en Drive.
+  <span style="text-decoration:underline;cursor:pointer;margin-left:6px;white-space:nowrap" onclick="cancelarEdicionCot()">✕ Nueva cotización</span>
+</div>
 <div class="page"><div class="doc">
   <!-- Cabecera: logo + folio + fecha + vigencia (igual que cotizador) -->
   <div class="doc-hd">
@@ -4618,7 +4624,7 @@ function toast(msg,type='',dur=2800){const t=document.getElementById('toast');cl
           <button onclick="abrirNuevoCliente()" style="width:100%;padding:7px;background:#E8F5EF;color:#1C6E4A;border:none;border-radius:6px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer">+ Agregar nuevo cliente</button>
         </div>
       </div>
-      <div class="fr"><span class="fl">Nombre / Razón Social</span><div class="fv"><input id="cot_c_nombre" type="text" placeholder="-" oninput="autosaveCot()"></div></div>
+      <div class="fr"><span class="fl">Nombre / Razón Social</span><div class="fv"><input id="cot_c_nombre" type="text" placeholder="-" oninput="autosaveCot();_autoFillClienteCot(this.value)"></div></div>
       <div class="fr"><span class="fl">RFC</span><div class="fv"><input id="cot_c_rfc" type="text" placeholder="-" oninput="autosaveCot()"></div></div>
       <div class="fr"><span class="fl">Dirección</span><div class="fv"><input id="cot_c_dir" type="text" placeholder="-" oninput="autosaveCot()"></div></div>
       <div class="fr"><span class="fl">C.P.</span><div class="fv"><input id="cot_c_cp" type="text" placeholder="-" oninput="autosaveCot()"></div></div>
@@ -4749,6 +4755,8 @@ function toast(msg,type='',dur=2800){const t=document.getElementById('toast');cl
 // ── Estado ───────────────────────────────────────────────────────────────
 let _cotItems = [], _cotId = 0, _ivaGlobalCot = 16;
 let _cotPpRowId = null, _cotCPanelOpen = false, _cotSaveTimer = null;
+let _cotModoEdicion = null; // id de la cotización que se está editando desde Historial
+let _autoFillCotTimer = null;
 
 function uuidCot(){ return 'cot_'+Date.now().toString(36)+'_'+Math.random().toString(36).substr(2,9); }
 
@@ -4793,10 +4801,10 @@ async function _procesarColaCotR(){
         _cotDesencolar(entry.id);
         // Actualizar historial con folio definitivo y URL del PDF
         if(typeof _cotOnSync==='function') _cotOnSync(entry.id, res.folio, res.url);
-        // Actualizar folio si cambió de TMP- a SUM-
-        if(res.folio && res.folio!==entry.folio){
-          toast('Cotización sincronizada: '+res.folio,'ok',3000);
-        }
+        if(res.folio) toast('Cotización guardada: '+res.folio,'ok',3000);
+        // CRÍTICO: refrescar folio para la SIGUIENTE cotización
+        // Sin esto, la próxima cotización usaría el mismo folio → idempotencia falsa
+        _cotCargarFolio();
       }
     }catch(e){ console.warn('_procesarColaCotR',e); }
   }
@@ -4829,7 +4837,19 @@ function _activarModoCot(){
     const cl=document.getElementById('cot_logoImg');if(cl)cl.src=src;
     const fl=document.getElementById('cot_ftLogoImg');if(fl){fl.src=src;fl.style.display='';}
   }
-  _cotReset();
+  // Restaurar borrador si hay uno reciente (< 4 horas) y no estamos en modo edición
+  if(!_cotModoEdicion){
+    const draft=leerSeguro('cot_draft_r',null);
+    const draftObj=draft?JSON.parse(draft):null;
+    const boradorReciente=draftObj&&draftObj.ts&&(Date.now()-draftObj.ts)<4*3600000;
+    const tieneContenido=draftObj&&(draftObj.c_nombre||(draftObj.items||[]).some(it=>it.clave||it.desc));
+    if(boradorReciente&&tieneContenido){
+      restoreCotDraft(draftObj);
+      toast('📝 Borrador restaurado — genera PDF o empieza de cero con ✕','ok',4000);
+    } else {
+      _cotReset();
+    }
+  }
 }
 
 function _activarModoRem(){
@@ -4849,6 +4869,8 @@ function _ejecutarVolverRem(){
   document.getElementById('btnPDFCot').style.display='none';
   document.getElementById('btnHistCot').style.display='none';
   document.getElementById('badgeCot').style.display='none';
+  // Limpiar modo edición de cotización al volver a remisiones
+  _salirModoEdicionCot();
   nuevaRem();
 }
 
@@ -4861,6 +4883,9 @@ function _cotReset(){
   const fd=document.getElementById('cot_fechaDisp');if(fd)fd.textContent=f;
   refreshVigCot();renderFooterCot();
   _cotCargarFolio();addRowCot();calcTotalsCot();
+  // Limpiar modo edición y borrador al empezar de cero
+  _salirModoEdicionCot();
+  localStorage.removeItem('cot_draft_r');
 }
 
 // ── Folio SUM- ────────────────────────────────────────────────────────────
@@ -4925,8 +4950,9 @@ function selClienteCot(n,r,d,cp,t,co,e){
   sv('cot_c_tel',t);sv('cot_c_contacto',co);sv('cot_c_email',e);
   const p=document.getElementById('cot_cPanel');if(p)p.classList.remove('open');
   _cotCPanelOpen=false;
-  // Precio anterior por cliente
+  // Precios anteriores + autosave
   _cotActualizarPreciosAnteriores(n);
+  autosaveCot();
 }
 // Cerrar panel si se hace clic fuera
 document.addEventListener('click',e=>{
@@ -4934,6 +4960,36 @@ document.addEventListener('click',e=>{
     const p=document.getElementById('cot_cPanel');if(p)p.classList.remove('open');_cotCPanelOpen=false;
   }
 });
+// Auto-fill datos del cliente al escribir nombre (igual que remisiones)
+function _autoFillClienteCot(nombre){
+  clearTimeout(_autoFillCotTimer);
+  const q=(nombre||'').trim().toLowerCase();
+  if(q.length<3)return;
+  _autoFillCotTimer=setTimeout(()=>{
+    const dirEl=document.getElementById('cot_c_dir');if(dirEl&&dirEl.value.trim())return;
+    // 1) CLIENTES del ERP
+    const match=CLIENTES.find(c=>(c.nombre||'').toLowerCase()===q||(c.nombre||'').toLowerCase().startsWith(q));
+    let datos=match?{dir:match.dir,cp:match.cp,tel:match.tel,rfc:match.rfc}:{};
+    // 2) Complementar desde historial de cotizaciones
+    const hist=leerSeguro('_cot_historial',[]);
+    for(const c of hist){
+      if((c.cliente||'').trim().toLowerCase()!==q)continue;
+      const d=c.data||{};
+      if(!datos.dir&&d.c_dir)datos.dir=d.c_dir;
+      if(!datos.cp&&d.c_cp)datos.cp=d.c_cp;
+      if(!datos.tel&&d.c_tel)datos.tel=d.c_tel;
+      if(!datos.rfc&&d.c_rfc)datos.rfc=d.c_rfc;
+      break;
+    }
+    if(datos.dir){const el=document.getElementById('cot_c_dir');if(el&&!el.value.trim())el.value=datos.dir;}
+    if(datos.cp){const el=document.getElementById('cot_c_cp');if(el&&!el.value.trim())el.value=datos.cp;}
+    if(datos.tel){const el=document.getElementById('cot_c_tel');if(el&&!el.value.trim())el.value=datos.tel;}
+    if(datos.rfc){const el=document.getElementById('cot_c_rfc');if(el&&!el.value.trim())el.value=datos.rfc;}
+    if(match||datos.dir)autosaveCot();
+    // Actualizar precios históricos para las filas actuales
+    _cotActualizarPreciosAnteriores(nombre);
+  },600);
+}
 
 // ── Tabla de productos (formato idéntico a cotizador) ─────────────────────
 function addRowCot(d={}){
@@ -4978,7 +5034,24 @@ function _cotAct(id,campo,val){
   it[campo]=(campo==='qty'||campo==='precio'||campo==='iva')?+val:val;
   calcTotalsCot();
 }
-function _cotActualizarPreciosAnteriores(cliente){}  // placeholder (no hay historial en cot)
+// Busca el último precio dado a 'cliente' para cada producto en el historial de cotizaciones.
+function _cotActualizarPreciosAnteriores(cliente){
+  if(!cliente)return;
+  const q=(cliente||'').trim().toLowerCase();
+  const hist=leerSeguro('_cot_historial',[]);
+  // Busca la cotización más reciente para este cliente
+  const cot=hist.find(c=>(c.cliente||'').trim().toLowerCase()===q&&c.data&&c.data.items);
+  if(!cot)return;
+  // Para cada fila activa del formulario, si tiene clave, busca el precio histórico
+  _cotItems.forEach(it=>{
+    if(!it.clave)return;
+    const antItem=(cot.data.items||[]).find(i=>String(i.clave||'').toLowerCase()===String(it.clave||'').toLowerCase());
+    if(antItem&&+antItem.precio>0&&+antItem.precio!==+it.precio){
+      it._precioAnt=+antItem.precio;
+    }
+  });
+  renderTableCot();
+}
 function _cotUsarPrecioAnt(id){
   const it=_cotItems.find(i=>i._id===id);if(!it||!it._precioAnt)return;
   it.precio=it._precioAnt;renderTableCot();calcTotalsCot();
@@ -5019,8 +5092,48 @@ document.addEventListener('click',()=>{
   document.getElementById('cot_ivaPopup2')?.classList.remove('open');
 });
 
-// ── Autosave ──────────────────────────────────────────────────────────────
-function autosaveCot(){clearTimeout(_cotSaveTimer);_cotSaveTimer=setTimeout(()=>{calcTotalsCot();renderFooterCot();},400);}
+// ── Snapshot / draft cotizaciones (equivalente a snap()/restore() de remisiones) ─────
+function snapCot(){
+  return{
+    folio:    document.getElementById('cot_folioBadge')?.innerText.trim()||'',
+    c_nombre: document.getElementById('cot_c_nombre')?.value||'',
+    c_rfc:    document.getElementById('cot_c_rfc')?.value||'',
+    c_dir:    document.getElementById('cot_c_dir')?.value||'',
+    c_cp:     document.getElementById('cot_c_cp')?.value||'',
+    c_tel:    document.getElementById('cot_c_tel')?.value||'',
+    c_contacto:document.getElementById('cot_c_contacto')?.value||'',
+    c_email:  document.getElementById('cot_c_email')?.value||'',
+    d_asesor: document.getElementById('cot_d_asesor')?.value||'',
+    d_pago:   document.getElementById('cot_d_pago')?.value||'',
+    d_entrega:document.getElementById('cot_d_entrega')?.value||'',
+    d_lugar:  document.getElementById('cot_d_lugar')?.value||'',
+    obs:      document.getElementById('cot_obs')?.value||'',
+    descPct:  document.getElementById('cot_descPct')?.value||0,
+    ivaGlobal:_ivaGlobalCot,
+    items:    JSON.parse(JSON.stringify(_cotItems)),
+    ts:       Date.now()
+  };
+}
+function restoreCotDraft(d){
+  if(!d)return;
+  const sv=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v??'';};
+  const fb=document.getElementById('cot_folioBadge');
+  if(fb&&d.folio){fb.innerText=d.folio;syncFolioCot(d.folio);}
+  ['c_nombre','c_rfc','c_dir','c_cp','c_tel','c_contacto','c_email',
+   'd_asesor','d_pago','d_entrega','d_lugar','obs'].forEach(f=>sv('cot_'+f,d[f]));
+  if(d.descPct!=null){const dp=document.getElementById('cot_descPct');if(dp)dp.value=d.descPct;}
+  if(d.ivaGlobal!=null)setIvaGlobalCot(+d.ivaGlobal);
+  _cotItems=(d.items||[]).map(it=>({...it,_id:++_cotId}));
+  renderTableCot();calcTotalsCot();
+}
+// ── Autosave: ahora persiste el borrador en localStorage ──────────────────
+function autosaveCot(){
+  clearTimeout(_cotSaveTimer);
+  _cotSaveTimer=setTimeout(()=>{
+    calcTotalsCot();renderFooterCot();
+    guardarSeguro('cot_draft_r',JSON.stringify(snapCot()));
+  },400);
+}
 
 // ── Buscador de productos (popup independiente del global) ─────────────────
 function _cotPpFiltrar(e,rowId){
@@ -5030,7 +5143,7 @@ function _cotPpFiltrar(e,rowId){
   const hits=PRODUCTOS.filter(p=>!q||(p.clave||'').toLowerCase().includes(q)||(p.desc||'').toLowerCase().includes(q)).slice(0,30);
   if(!hits.length){pp.classList.remove('open');return;}
   const rect=e.target.getBoundingClientRect();
-  pp.style.cssText=`position:fixed;top:${rect.bottom+window.scrollY+2}px;left:${rect.left}px;width:${Math.max(320,rect.width)}px;z-index:3000;`;
+  pp.style.cssText=`position:fixed;top:${rect.bottom+2}px;left:${rect.left}px;width:${Math.max(320,rect.width)}px;z-index:3000;`;
   pp.innerHTML=hits.map((p,i)=>`<div class="pp-item" onmousedown="_cotPpSel(${i})" style="cursor:pointer">
     <span class="pp-cod">${esc(p.clave)}</span>
     <span class="pp-desc">${esc(p.desc)}</span>
@@ -5076,7 +5189,8 @@ async function _generarCotizacion(){
 
   const folioEl=document.getElementById('cot_folioBadge');
   let folio=folioEl?.innerText.trim()||_cotGenFolioLocal();
-  if(!isOnline) folio='TMP-'+Math.random().toString(36).substr(2,8).toUpperCase();
+  // En modo edición conservamos el folio original (no asignamos TMP-)
+  if(!isOnline && !_cotModoEdicion) folio='TMP-'+Math.random().toString(36).substr(2,8).toUpperCase();
 
   const now=new Date();
   const dd=String(now.getDate()).padStart(2,'0'),mm_=String(now.getMonth()+1).padStart(2,'0'),yyyy=now.getFullYear();
@@ -5114,11 +5228,16 @@ async function _generarCotizacion(){
     const tot=sub-sub*pct+ivaT;
     const total=tot.toFixed(2);
 
+    // ── Capturar productos nuevos (F7: los que no están en el catálogo) ──
+    _capturarProductosNuevos(data);
+
     // ── Encolar para Drive ──
     const b64=doc.output('datauristring').split(',')[1];
-    const id=uuidCot();
+    // En modo edición: reusar el id original (idempotente → sobreescribe en Drive)
+    const id=_cotModoEdicion||uuidCot();
     const gps=await _obtenerGPS().catch(()=>null);
-    const entry={id,folio,cliente:nombre,fecha:fechaTxt,total,filename,pdf:b64,data,lat:gps?.lat||'',lng:gps?.lng||''};
+    const entry={id,folio,cliente:nombre,fecha:fechaTxt,total,filename,pdf:b64,data,
+                 lat:gps?.lat||'',lng:gps?.lng||'',ts:Date.now()};
     _cotEncolar(entry);
 
     // ── Descarga / apertura (idéntica a cotizador) ──
@@ -5146,9 +5265,13 @@ async function _generarCotizacion(){
     }
 
     // ── Subir a Drive ──
-    // NOTA: NO enviar inmediatamente. Solo encolar. _procesarColaCotR() lo maneja.
-    // Razón: si hay error o desconexión, no duplicamos el PDF.
-    toast(isOnline ? '☁️ Cotización en cola para sincronizar…' : '📵 Sin conexión — se subirá al volver la señal','ok',3000);
+    // Encolar primero, luego procesar. Así si falla o hay desconexión queda en cola.
+    // Si ya estamos online, disparar inmediatamente (no esperar al próximo heartbeat).
+    toast(isOnline ? '☁️ Subiendo cotización…' : '📵 Sin conexión — se subirá al volver la señal','ok',3000);
+    if(isOnline) setTimeout(_procesarColaCotR, 300);
+    // Limpiar borrador y salir de modo edición al generar exitosamente
+    localStorage.removeItem('cot_draft_r');
+    _salirModoEdicionCot();
   }catch(e){
     if(iosWin)try{iosWin.close()}catch(_){}
     toast('Error: '+e.message,'err');console.error('_generarCotizacion',e);
@@ -5332,8 +5455,13 @@ function _construirPDFCot(data){
     doc.setDrawColor(...BRD).setLineWidth(0.2).line(tx+4,ty+2,tx+totW-4,ty+2);
   };
   let ty_=y+11;
+  // IVA label: derivar el % efectivo de los items del data (no de la variable global de sesión)
+  const _ivaEfectivo=(()=>{
+    const ivaVals=[...(new Set((data.items||[]).filter(it=>+it.qty>0&&+it.precio>0).map(it=>+it.iva||0)))];
+    return ivaVals.length===1?ivaVals[0]+'%':'mixto';
+  })();
   totLine2('Subtotal',fmt(sub),ty_);ty_+=6;
-  totLine2('IVA ('+_ivaGlobalCot+'%)',fmt(ivaT),ty_);ty_+=4;
+  totLine2('IVA ('+_ivaEfectivo+')',fmt(ivaT),ty_);ty_+=4;
   if(_pct>0){totLine2('Descuento','-'+fmt(desc_),ty_);ty_+=5;}
   doc.setFillColor(...NAV).roundedRect(tx+4,ty_+1,totW-8,6,1.5,1.5,'F');
   doc.setFontSize(7).setFont('helvetica','bold').setTextColor(255,255,255);doc.text('TOTAL',tx+8,ty_+4.8);
@@ -5356,6 +5484,17 @@ function _construirPDFCot(data){
   if(ftContact){doc.setFontSize(6.5).setFont('helvetica','normal').setTextColor(...MUT);doc.text(ftContact,ML+CW-5,ftMidY,{align:'right'});}
 
   return doc;
+}
+
+// ── Cancelar edición de cotización (equivalente a cancelarEdicion en remisiones) ─────
+function _salirModoEdicionCot(){
+  _cotModoEdicion=null;
+  const eb=document.getElementById('cotEditBanner');if(eb)eb.style.display='none';
+}
+function cancelarEdicionCot(){
+  _salirModoEdicionCot();
+  _cotReset();
+  toast('Nueva cotización','ok');
 }
 
 // ── Procesar cola al reconectar ───────────────────────────────────────────
@@ -5406,15 +5545,19 @@ function _cotEstadoBadge(entry){
       const pdfBtn=c.url
         ? `<a href="${c.url}" target="_blank" class="btn btn-p" style="font-size:11px;padding:4px 8px">☁️ Ver PDF</a>`
         : '';
-      return `<div class="rem-i" onclick="_cotCargarDesdeHistorial('${c.id}')">
+      const editBtn=c.data
+        ? `<button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="event.stopPropagation();_cotCargarDesdeHistorial('${c.id}')">✏️ Editar</button>`
+        : '';
+      return `<div class="rem-i" style="cursor:default">
         <div style="flex:1;min-width:0">
           <div class="rem-fo">${c.folio||'SUM-????'}</div>
           <div class="rem-cl">${c.cliente||'—'}</div>
           <div style="font-size:10.5px;color:var(--muted);margin-top:1px">${f}</div>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
           ${badge}
           <div class="rem-to">${total}</div>
+          ${editBtn}
           ${pdfBtn}
         </div>
       </div>`;
@@ -5433,10 +5576,25 @@ function _cotEstadoBadge(entry){
     _renderHistCot(q);
   }
 
-  // Cargar cotización desde historial (para re-ver)
+  // Cargar cotización desde historial para MODIFICAR (equivalente a modificarRem)
   function _cotCargarDesdeHistorial(id){
-    toast('Historial: solo lectura — genera un PDF nuevo si lo necesitas','ok',3000);
+    const hist=leerSeguro('_cot_historial',[]);
+    const cola=leerSeguro('cola_cot_r',[]);
+    // Buscar en historial y en cola (por si aún no se sincronizó)
+    const entry=hist.find(c=>c.id===id)||cola.find(c=>c.id===id);
+    if(!entry){toast('No se encontró la cotización','err');return;}
+    if(!entry.data){toast('Esta cotización no tiene detalle local para modificar','warn');return;}
     closeOv('ovHistCot');
+    // Restaurar formulario con los datos guardados
+    restoreCotDraft({...entry.data, folio:entry.folio||entry.data.folio});
+    _cotModoEdicion=entry.id;
+    // Banner de aviso
+    const eb=document.getElementById('cotEditBanner');
+    const ebt=document.getElementById('cotEditBannerTxt');
+    if(ebt) ebt.textContent='Editando '+entry.folio;
+    if(eb) eb.style.display='block';
+    window.scrollTo({top:0,behavior:'smooth'});
+    toast('✏️ '+entry.folio+' abierta — genera PDF para actualizar en Drive','ok',5000);
   }
 
   // Guardar cotización al historial local cuando se encola
