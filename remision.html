@@ -1005,7 +1005,12 @@ async function heartbeat(){
   try{
     const ctrl=new AbortController();
     const t=setTimeout(()=>ctrl.abort(),5000);
-    const r=await fetch(url+'?tipo=ping',{signal:ctrl.signal,cache:'no-store'});
+    const r=await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({tipo:'ping',token:API_TOKEN}),
+      signal:ctrl.signal
+    });
     clearTimeout(t);
     setOnlineState(r.ok||r.status===0);
     if(isOnline){
@@ -1398,7 +1403,11 @@ function incrementarFolio(){
 // Carga el siguiente folio desde Apps Script al abrir la página
 function cargarFolioRemoto(){
   const url=getScriptUrl();if(!url)return;
-  fetch(url+'?tipo=folio_rem')
+  fetch(url,{
+    method:'POST',
+    headers:{'Content-Type':'text/plain'},
+    body:JSON.stringify({tipo:'folio_rem',token:API_TOKEN})
+  })
     .then(r=>r.json())
     .then(d=>{
       if(d&&d.folio){
@@ -2861,8 +2870,12 @@ async function validarToken(){
   if(btn){btn.disabled=true;btn.textContent='⏳ Conectando…';}
   if(el)el.innerHTML='<span style="color:var(--muted)">🔌 Conectando con el servidor…</span>';
   try{
-    const url=getScriptUrl()+'?tipo=ping&token='+encodeURIComponent(v);
-    const r=await fetch(url);
+    const url=getScriptUrl();
+    const r=await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({tipo:'ping',token:v})
+    });
     const j=await r.json();
     if(j&&j.ok){
       if(el)el.innerHTML='<span style="color:var(--green);font-weight:800">✅ Token CORRECTO — conectado al servidor.</span>';
@@ -4748,7 +4761,7 @@ async function _procesarColaCotR(){
     try{
       let folio=entry.folio, b64=entry.pdf;
       if(String(folio).startsWith('TMP-')&&window.jspdf){
-        const r=await fetch(url+'?tipo=folio').then(x=>x.json()).catch(()=>null);
+        const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({tipo:'folio',token:API_TOKEN})}).then(x=>x.json()).catch(()=>null);
         if(r&&r.folio){ folio=r.folio; }
         const doc=_construirPDFCot({...entry.data,folio});
         if(doc) b64=doc.output('datauristring').split(',')[1];
@@ -4826,7 +4839,7 @@ function _cotCargarFolio(){
   const el=document.getElementById('cot_folioBadge');
   if(el) el.innerText=_cotGenFolioLocal();
   const url=getScriptUrl();if(!url||!isOnline)return;
-  fetch(url+'?tipo=folio').then(r=>r.json()).then(d=>{
+  fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({tipo:'folio',token:API_TOKEN})}).then(r=>r.json()).then(d=>{
     if(d&&d.folio){
       if(el) el.innerText=d.folio;
       const m=d.folio.match(/(\d+)$/);if(m)localStorage.setItem('_cot_fn',String(parseInt(m[1])-1));
