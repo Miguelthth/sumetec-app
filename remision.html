@@ -346,6 +346,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   <div class="tb-div" id="tbDiv2"></div>
   <!-- Botón modo COTIZACIÓN: volver a remisiones (oculto por defecto) -->
   <button class="btn btn-g" id="btnVolverRem" style="display:none;background:rgba(255,255,255,.15);gap:6px" onclick="_activarModoRem()">← Volver a Remisiones</button>
+  <button class="btn btn-o" id="btnHistCot" style="display:none" onclick="verHistCot()">📋 Historial</button>
+  <span id="badgeCot" style="display:none"></span>
   <div class="tb-div" id="tbDiv3" style="display:none"></div>
   <!-- Botones comunes -->
   <button class="btn btn-o" onclick="abrirEmpresa()">🏢 Mi empresa</button>
@@ -590,6 +592,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 </div>
 
 <div class="ov" id="ovHist"><div class="modal"><div class="modal-hd"><div class="modal-title">📋 Historial de Remisiones</div><button class="mx" onclick="closeOv('ovHist')">✕</button></div><input class="mi" type="text" id="histBusqInput" placeholder="Buscar por folio o cliente…" oninput="filtRems(this.value)"><div id="histFiltroCliente" style="display:none;background:var(--green-light);border-radius:8px;padding:7px 12px;margin-bottom:8px;align-items:center;justify-content:space-between;gap:8px"><div style="font-size:12.5px;font-weight:700;color:var(--green)" id="histFiltroNombre"></div><div style="font-size:12px;font-weight:700;color:var(--green)" id="histFiltroTotal"></div><button onclick="limpiarFiltroCliente()" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:15px;font-weight:700;line-height:1">✕</button></div><div class="ml" id="remList"></div></div></div>
+<!-- Historial de Cotizaciones -->
+<div class="ov" id="ovHistCot"><div class="modal"><div class="modal-hd"><div class="modal-title">📄 Historial de Cotizaciones</div><button class="mx" onclick="closeOv('ovHistCot')">✕</button></div><input class="mi" type="text" id="histCotBusq" placeholder="Buscar por folio o cliente…" oninput="_filtrarHistCot(this.value)"><div class="ml" id="cotHistList" style="margin-top:8px"></div></div></div>
 
 <div class="ov" id="ovCancelar"><div class="modal" style="max-width:420px">
   <div class="modal-hd"><div class="modal-title" style="color:#c0392b">🚫 Cancelar Remisión</div><button class="mx" onclick="closeOv('ovCancelar')">✕</button></div>
@@ -4749,7 +4753,12 @@ let _cotPpRowId = null, _cotCPanelOpen = false, _cotSaveTimer = null;
 function uuidCot(){ return 'cot_'+Date.now().toString(36)+'_'+Math.random().toString(36).substr(2,9); }
 
 // ── Cola offline (clave distinta a cotizador.html) ────────────────────────
-function _cotEncolar(e){ guardarSeguro('cola_cot_r',JSON.stringify(leerSeguro('cola_cot_r',[]).filter(x=>x.id!==e.id).concat(e))); }
+function _cotEncolar(e){
+  guardarSeguro('cola_cot_r',JSON.stringify(leerSeguro('cola_cot_r',[]).filter(x=>x.id!==e.id).concat(e)));
+  // Guardar en historial local para mostrar en overlay de historial
+  if(typeof _cotGuardarHistorial==='function') _cotGuardarHistorial(e);
+  _actualizarBadgeCot();
+}
 function _cotDesencolar(id){ guardarSeguro('cola_cot_r',JSON.stringify(leerSeguro('cola_cot_r',[]).filter(x=>x.id!==id))); }
 
 async function _procesarColaCotR(){
@@ -4773,9 +4782,18 @@ async function _procesarColaCotR(){
         datosCliente:{nombre:entry.data?.c_nombre||entry.cliente,tel:entry.data?.c_tel||'',
           dir:entry.data?.c_dir||'',cp:entry.data?.c_cp||'',rfc:entry.data?.c_rfc||''}};
       const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)}).then(x=>x.json());
-      if(res&&res.ok) _cotDesencolar(entry.id);
+      if(res&&res.ok){
+        _cotDesencolar(entry.id);
+        // Actualizar historial con folio definitivo y URL del PDF
+        if(typeof _cotOnSync==='function') _cotOnSync(entry.id, res.folio, res.url);
+        // Actualizar folio si cambió de TMP- a SUM-
+        if(res.folio && res.folio!==entry.folio){
+          toast('Cotización sincronizada: '+res.folio,'ok',3000);
+        }
+      }
     }catch(e){ console.warn('_procesarColaCotR',e); }
   }
+  _actualizarBadgeCot();
 }
 
 // ── MODO SWITCH ───────────────────────────────────────────────────────────
@@ -4788,11 +4806,16 @@ function _activarModoCot(){
   document.querySelector('.page').style.display='none';
   document.getElementById('secCot').style.display='';
   const modoEl=document.getElementById('tbModo');if(modoEl)modoEl.textContent='Cotizaciones';
+  // Ocultar botones de remisiones
   ['btnNueva','tbDiv1','btnHist','btnCotizacion','btnCobros','tbDiv2','btnDescargarPDF','badgePendientes']
     .forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
+  // Mostrar botones de cotizaciones
   document.getElementById('btnVolverRem').style.display='';
   document.getElementById('tbDiv3').style.display='';
   document.getElementById('btnPDFCot').style.display='';
+  document.getElementById('btnHistCot').style.display='';
+  // Badge de cotizaciones pendientes
+  _actualizarBadgeCot();
   // Sincronizar logo
   const src=document.getElementById('logoImg')?.src;
   if(src){
@@ -4810,11 +4833,15 @@ function _ejecutarVolverRem(){
   document.getElementById('secCot').style.display='none';
   document.querySelector('.page').style.display='';
   const modoEl=document.getElementById('tbModo');if(modoEl)modoEl.textContent='Remisiones';
+  // Restaurar botones de remisiones
   ['btnNueva','tbDiv1','btnHist','btnCotizacion','btnCobros','tbDiv2','btnDescargarPDF','badgePendientes']
     .forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='';});
+  // Ocultar botones de cotizaciones
   document.getElementById('btnVolverRem').style.display='none';
   document.getElementById('tbDiv3').style.display='none';
   document.getElementById('btnPDFCot').style.display='none';
+  document.getElementById('btnHistCot').style.display='none';
+  document.getElementById('badgeCot').style.display='none';
   nuevaRem();
 }
 
@@ -5327,6 +5354,127 @@ function _construirPDFCot(data){
 // ── Procesar cola al reconectar ───────────────────────────────────────────
 window.addEventListener('online',()=>{ setTimeout(_procesarColaCotR,2000); });
 document.addEventListener('DOMContentLoaded',()=>{ setTimeout(_procesarColaCotR,3000); });
+</script>
+
+<script>
+// ── HISTORIAL DE COTIZACIONES ────────────────────────────────────────────
+
+// Estado badge para una cotización (análogo a _estadoBadge de remisiones)
+function _cotEstadoBadge(entry){
+    const cola=leerSeguro('cola_cot_r',[]);
+    const enCola=cola.some(c=>c.id===entry.id);
+    const sincTag=enCola
+      ? '<span class="estado-badge badge-sync">⏳ sin sync</span>'
+      : '<span class="estado-badge badge-pagado" style="background:#E8F5EF;color:#1C6E4A">✅ Enviada</span>';
+    const pdfTag=entry.url
+      ? '<span class="estado-badge" style="background:#E8F5EF;color:#1C6E4A;font-size:10px">☁️ PDF</span>'
+      : '<span class="estado-badge" style="background:#FFF3E0;color:#E67E22;font-size:10px">📄 local</span>';
+    return sincTag+' '+pdfTag;
+  }
+
+  // Renderiza el historial de cotizaciones
+  function _renderHistCot(filtro){
+    const lista=document.getElementById('cotHistList');
+    if(!lista)return;
+    const cots=leerSeguro('_cot_historial',[]);
+    const cola=leerSeguro('cola_cot_r',[]);
+    // Mezclar historial guardado + cola pendiente (deduplica por id)
+    const todas=[...cots];
+    cola.forEach(e=>{ if(!todas.find(c=>c.id===e.id)) todas.push(e); });
+    // Ordenar más reciente primero
+    todas.sort((a,b)=>(b.ts||0)-(a.ts||0));
+    const q=(filtro||'').toLowerCase().trim();
+    const filtradas=q?todas.filter(c=>
+      (c.folio||'').toLowerCase().includes(q)||
+      (c.cliente||'').toLowerCase().includes(q)
+    ):todas;
+    if(!filtradas.length){
+      lista.innerHTML='<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">No hay cotizaciones guardadas</div>';
+      return;
+    }
+    lista.innerHTML=filtradas.map(c=>{
+      const f=new Date(c.ts||Date.now()).toLocaleDateString('es-MX');
+      const total=parseFloat(c.total||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
+      const badge=_cotEstadoBadge(c);
+      const pdfBtn=c.url
+        ? `<a href="${c.url}" target="_blank" class="btn btn-p" style="font-size:11px;padding:4px 8px">☁️ Ver PDF</a>`
+        : '';
+      return `<div class="rem-i" onclick="_cotCargarDesdeHistorial('${c.id}')">
+        <div style="flex:1;min-width:0">
+          <div class="rem-fo">${c.folio||'SUM-????'}</div>
+          <div class="rem-cl">${c.cliente||'—'}</div>
+          <div style="font-size:10.5px;color:var(--muted);margin-top:1px">${f}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          ${badge}
+          <div class="rem-to">${total}</div>
+          ${pdfBtn}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Abrir historial de cotizaciones
+  function verHistCot(){
+    _renderHistCot('');
+    document.getElementById('histCotBusq').value='';
+    document.getElementById('ovHistCot').classList.add('open');
+  }
+
+  // Filtrar historial
+  function _filtrarHistCot(q){
+    _renderHistCot(q);
+  }
+
+  // Cargar cotización desde historial (para re-ver)
+  function _cotCargarDesdeHistorial(id){
+    toast('Historial: solo lectura — genera un PDF nuevo si lo necesitas','ok',3000);
+    closeOv('ovHistCot');
+  }
+
+  // Guardar cotización al historial local cuando se encola
+  function _cotGuardarHistorial(entry){
+    const hist=leerSeguro('_cot_historial',[]);
+    // Deduplica por id y actualiza
+    const idx=hist.findIndex(c=>c.id===entry.id);
+    if(idx>=0) hist[idx]={...hist[idx],...entry};
+    else hist.unshift({...entry,ts:entry.ts||Date.now()});
+    // Máximo 200 cotizaciones en historial
+    if(hist.length>200) hist.length=200;
+    guardarSeguro('_cot_historial',JSON.stringify(hist));
+  }
+
+  // Actualizar badge de cotizaciones pendientes
+  function _actualizarBadgeCot(){
+    const b=document.getElementById('badgeCot');
+    if(!b)return;
+    const n=leerSeguro('cola_cot_r',[]).length;
+    if(n>0){
+      b.style.display='';
+      b.style.cssText='display:inline-flex;align-items:center;background:#E67E22;color:#fff;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap';
+      b.textContent='⏳ '+n+' sin enviar';
+    } else {
+      b.style.display='none';
+    }
+  }
+
+  // Actualizar historial cuando se sincroniza una cotización (se llama desde _procesarColaCotR)
+  function _cotOnSync(id, folioDefinitivo, pdfUrl){
+    const hist=leerSeguro('_cot_historial',[]);
+    const idx=hist.findIndex(c=>c.id===id);
+    if(idx>=0){
+      if(folioDefinitivo) hist[idx].folio=folioDefinitivo;
+      if(pdfUrl) hist[idx].url=pdfUrl;
+      guardarSeguro('_cot_historial',JSON.stringify(hist));
+    }
+    _actualizarBadgeCot();
+    if(document.getElementById('ovHistCot')?.classList.contains('open')){
+      _renderHistCot(document.getElementById('histCotBusq')?.value||'');
+    }
+  }
+
+// Actualizar badge al cargar
+document.addEventListener('DOMContentLoaded',()=>{ setTimeout(_actualizarBadgeCot,1000); });
 </script>
 
 <script>
