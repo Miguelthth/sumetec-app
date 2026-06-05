@@ -491,7 +491,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <div class="bt">📦 Resumen</div>
       <div class="rr"><span class="rl">N° de Artículos</span><span class="rv" id="rArts">0</span></div>
       <div class="rr"><span class="rl">Total de Piezas</span><span class="rv" id="rPzs">0</span></div>
-      <div class="rr" style="border:none;margin-top:6px"><span class="rl">Descuento global</span><div style="display:flex;align-items:center;gap:5px" class="no-print"><input class="di" type="number" id="descPct" value="0" min="0" max="100" oninput="calcTotals()"><span style="font-size:12px;color:var(--muted)">%</span></div></div>
+      <div class="rr" style="border:none;margin-top:6px"><span class="rl">Descuento global</span><div style="display:flex;align-items:center;gap:5px" class="no-print"><input class="di" type="number" inputmode="decimal" id="descPct" value="0" min="0" max="100" oninput="calcTotals()"><span style="font-size:12px;color:var(--muted)">%</span></div></div>
     </div>
     <div class="lb">
       <div class="bt">💰 Totales</div>
@@ -499,6 +499,9 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <div class="tl"><span class="tll" style="cursor:pointer;user-select:none;position:relative" onclick="toggleIvaPopup2(event)">IVA <span id="ivaLbl" style="font-size:10px;color:var(--green);font-weight:600">0%</span><div class="iva-popup" id="ivaPopup2"><div class="iva-opt sel" onclick="setIvaGlobal(0,event)">0%</div><div class="iva-opt" onclick="setIvaGlobal(8,event)">8%</div><div class="iva-opt" onclick="setIvaGlobal(16,event)">16%</div></div></span><span class="tlv" id="tIva">$0.00</span></div>
       <div class="tl"><span class="tll">Descuento</span><span class="tlv" id="tDesc">$0.00</span></div>
       <div class="tf"><span class="tf-l">Total</span><span class="tf-v" id="tTot">$0.00 MXN</span></div>
+      <div class="no-print" style="text-align:right;margin-top:3px">
+        <button id="btnRedondeo" onclick="toggleRedondeoRem()" style="background:none;border:1px solid var(--border);border-radius:6px;font-size:10px;color:var(--muted);cursor:pointer;padding:3px 9px;font-family:inherit">🔢 Quitar redondeo</button>
+      </div>
       <div class="tw" id="tWords"></div>
       <button id="btnPagoRapido" class="btn btn-p no-print" style="width:100%;justify-content:center;padding:11px;margin-top:12px;display:none" onclick="irAPagos()">💰 Registrar Pago</button>
     </div>
@@ -887,6 +890,16 @@ function _limpiarMemoriaAntigua(){
     for(const e of cola){ if(e.pdf){ delete e.pdf; cambio=true; } }
     if(cambio) guardarSeguro('cola_pdf',JSON.stringify(cola));
   }catch(_){}
+  // 1b) Migración: las cotizaciones guardaban el PDF base64 (~500KB c/u) en el historial
+  //     y en la cola → reventaba la cuota. Quitarlo de lo ya almacenado (se regenera de `data`).
+  try{
+    ['_cot_historial','cola_cot_r'].forEach(clave=>{
+      const arr=leerSeguro(clave,[]);
+      let camb=false;
+      for(const e of arr){ if(e&&e.pdf){ delete e.pdf; camb=true; } }
+      if(camb) guardarSeguro(clave,JSON.stringify(arr));
+    });
+  }catch(_){}
   // 2) Podar data pesada de remisiones ya sincronizadas (libera espacio significativo)
   _podarRemisionesSincronizadas();
   try{ persistirRemisiones(); }catch(_){}
@@ -1019,6 +1032,7 @@ async function heartbeat(){
     setOnlineState(r.ok||r.status===0);
     if(isOnline){
       procesarColaElim(); // procesa borrados pendientes
+      procesarColaNuevos(); // reenvía clientes/productos nuevos que quedaron sin subir
       _procesarColaCotR(); // procesa cotizaciones pendientes
       // AHORRO DE DATOS: el ping liviano trae un número de versión que el servidor
       // sube cada vez que cambian remisiones/pagos. Solo descargamos la lista COMPLETA
@@ -1048,18 +1062,12 @@ async function heartbeat(){
         // Backend viejo sin catVer: refrescar si lleva >2h sin actualizar
         refrescarCatalogo(true);
       }
-      // Catálogo: refrescar precios solo si cambiaron en el ERP (catVer distinto)
-      const cv = (pd && pd.catVer!=null) ? String(pd.catVer) : null;
-      if(cv!==null && cv!==localStorage.getItem('cat_ver')){
-        localStorage.setItem('cat_ver',cv);
-        refrescarCatalogo(true);
-      }
     }
   }catch(e){setOnlineState(false);}
 }
 
 function startHeartbeat(){heartbeat();_hbTimer=setInterval(heartbeat,10000);}
-window.addEventListener('online',()=>{heartbeat();setTimeout(procesarColaElim,900);setTimeout(procesarColaRemisiones,1500);setTimeout(procesarCola,2100);setTimeout(procesarColaPDF,2700);setTimeout(_procesarColaCotR,3300);});
+window.addEventListener('online',()=>{heartbeat();setTimeout(procesarColaElim,900);setTimeout(procesarColaRemisiones,1500);setTimeout(procesarCola,2100);setTimeout(procesarColaPDF,2700);setTimeout(_procesarColaCotR,3300);setTimeout(procesarColaNuevos,3600);});
 window.addEventListener('offline',()=>setOnlineState(false));
 
 // C) Recordatorio/seguridad al salir o pasar a segundo plano.
@@ -1067,7 +1075,8 @@ window.addEventListener('offline',()=>setOnlineState(false));
 function _pendientesTotal(){
   return leerSeguro('cola_offline',[]).length+leerSeguro('cola_remisiones',[]).length
        +leerSeguro('cola_pdf',[]).length+leerSeguro('cola_elim',[]).length
-       +leerSeguro('cola_cot_r',[]).length; // cotizaciones pendientes
+       +leerSeguro('cola_cot_r',[]).length // cotizaciones pendientes
+       +leerSeguro('cola_nuevos',[]).length; // clientes/productos nuevos pendientes
 }
 // Al minimizar/cambiar de app: si hay señal, intenta vaciar las colas en segundo plano
 // (clave en iPhone, que puede borrar los datos tras ~7 días sin abrir la app).
@@ -1076,7 +1085,7 @@ document.addEventListener('visibilitychange',()=>{
   if(document.hidden){
     // Al ir a segundo plano: vaciar cola si hay señal (crítico en iOS — puede borrar datos)
     if(isOnline && _pendientesTotal()>0){
-      procesarColaElim();procesarColaRemisiones();procesarCola();procesarColaPDF();_procesarColaCotR();
+      procesarColaElim();procesarColaRemisiones();procesarCola();procesarColaPDF();_procesarColaCotR();procesarColaNuevos();
     }
     // Refrescar catálogo en segundo plano si tiene más de 1h (sin gastar datos visibles)
     const gsSync=localStorage.getItem('gs_sync');
@@ -1090,7 +1099,7 @@ document.addEventListener('visibilitychange',()=>{
     if(pend>0) toast('⏳ '+pend+' sin enviar — sincronizando…','warn',3500);
     // Si la cola tiene items, procesarlos de inmediato (por si volvió la señal)
     if(pend>0&&isOnline){
-      setTimeout(()=>{procesarColaElim();procesarColaRemisiones();procesarCola();procesarColaPDF();_procesarColaCotR();},500);
+      setTimeout(()=>{procesarColaElim();procesarColaRemisiones();procesarCola();procesarColaPDF();_procesarColaCotR();procesarColaNuevos();},500);
     }
   }
 });
@@ -1101,6 +1110,12 @@ window.addEventListener('beforeunload',(e)=>{
 
 // ── Cobros compartidos: caché desde Sheets (fuente única para ambos celulares) ──
 let _bajandoCobros=false;
+// Guardas de reentrada de las colas: en conexión lenta (servidor tarda 15s) el
+// heartbeat de 10s — más los disparadores online/visibilitychange/arranque — vuelve
+// a llamar al MISMO procesador antes de que termine, reenviando todo en paralelo:
+// quema folios (cotizaciones piden uno nuevo en cada reintento) y agota la cuota de
+// Apps Script. Estos flags garantizan UNA pasada a la vez por cola.
+let _procRemEnCurso=false,_procPagosEnCurso=false,_procPDFEnCurso=false,_procElimEnCurso=false,_procCotEnCurso=false,_procNuevosEnCurso=false;
 async function bajarCobros(){
   if(!isOnline||_bajandoCobros)return;
   const url=getScriptUrl();if(!url)return;
@@ -1128,7 +1143,9 @@ async function bajarCobros(){
 // Suma de pagos válidos (excluye anulaciones y pagos anulados).
 function _sumaPagos(r){
   const anulados=new Set((r.pagos||[]).filter(p=>p.tipo==='anulacion').map(p=>p.pago_ref));
-  return (r.pagos||[]).filter(p=>p.tipo!=='anulacion'&&!anulados.has(p.uuid)).reduce((a,p)=>a+(p.monto||0),0);
+  // Excluye también pagos `_rechazado` (el servidor los descartó por sobrecobro:
+  // la remisión ya estaba cobrada por el otro dispositivo) → libros locales correctos.
+  return (r.pagos||[]).filter(p=>p.tipo!=='anulacion'&&!p._rechazado&&!anulados.has(p.uuid)).reduce((a,p)=>a+(p.monto||0),0);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1359,6 +1376,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   procesarColaRemisiones();
   setTimeout(procesarCola,1200);
   setTimeout(procesarColaPDF,2000);
+  setTimeout(procesarColaNuevos,2400);
   bajarCobros();
   actualizarBadgePendientes();
   actualizarPanelConexion();
@@ -1427,12 +1445,45 @@ function cargarFolioRemoto(){
     .catch(()=>{});// Si falla, queda el folio local
 }
 
-// Envía un cliente o producto nuevo al Sheets de Drive para registro
+// Envía un cliente o producto nuevo al Sheets de Drive para registro.
+// Si no hay señal o el envío falla, lo encola (cola_nuevos) y se reintenta al
+// reconectar — antes se perdía silenciosamente (fetch().catch vacío) aunque
+// _capturarProductosNuevos ya lo había marcado como "capturado".
 function enviarNuevoADrive(tipo,datos){
   const url=getScriptUrl();if(!url)return;
+  const payload={tipo,...datos};
+  if(!isOnline){ _encolarNuevo(payload); return; }
   fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
-    body:JSON.stringify({tipo,token:API_TOKEN,...datos}) // incluir token (si no, el servidor rechaza)
-  }).catch(()=>{});
+    body:JSON.stringify({...payload,token:API_TOKEN}) // incluir token (si no, el servidor rechaza)
+  }).then(r=>r.json()).then(d=>{ if(!d||!d.ok) _encolarNuevo(payload); })
+    .catch(()=>{ _encolarNuevo(payload); });
+}
+function _encolarNuevo(payload){
+  const cola=leerSeguro('cola_nuevos',[]);
+  // Dedup por tipo + clave natural (clave de producto o nombre+tel de cliente)
+  const k=payload.tipo+'|'+String(payload.clave||payload.nombre||'').toLowerCase()+'|'+String(payload.tel||'');
+  if(cola.some(e=>e._k===k))return;
+  cola.push({...payload,_k:k});
+  guardarSeguro('cola_nuevos',JSON.stringify(cola));
+}
+async function procesarColaNuevos(){
+  if(!isOnline||_procNuevosEnCurso)return;
+  const url=getScriptUrl();if(!url)return;
+  let cola=leerSeguro('cola_nuevos',[]);
+  if(!cola.length)return;
+  _procNuevosEnCurso=true;
+  try{
+    for(const e of cola.slice()){
+      try{
+        const {_k,...payload}=e;
+        const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
+          body:JSON.stringify({...payload,token:API_TOKEN})});
+        const d=await res.json();
+        if(d&&d.ok){ cola=cola.filter(x=>x._k!==e._k); guardarSeguro('cola_nuevos',JSON.stringify(cola)); }
+        else break; // servidor rechazó (p.ej. token) → reintentar luego
+      }catch(_){ break; } // sin red → reintentar al reconectar
+    }
+  }finally{ _procNuevosEnCurso=false; }
 }
 // F7: captura los productos escritos A MANO (que no están en el catálogo) en "Productos Nuevos",
 // igual que los clientes se capturan solos. Es un buzón para revisar e importar a tu ERP.
@@ -1584,7 +1635,7 @@ function _encolarPDFsiHace(rem){
   if(cambio)guardarSeguro('cola_pdf',JSON.stringify(cola));
 }
 async function procesarColaPDF(){
-  if(!isOnline)return;
+  if(!isOnline||_procPDFEnCurso)return;
   // Si jsPDF aún no cargó, reintentar en 3s (pasa cuando se abre con caché vacío)
   if(!window.jspdf){
     setTimeout(procesarColaPDF, 3000);
@@ -1592,17 +1643,20 @@ async function procesarColaPDF(){
   }
   const cola=leerSeguro('cola_pdf',[]);
   if(!cola.length)return;
-  let ok=0;
-  for(const entry of [...cola]){
-    const rem=remisiones.find(x=>String(x.id)===String(entry.id));
-    if(!rem||!rem.data){ console.warn('PDF en cola sin datos locales:',entry.folio); continue; }
-    try{
-      descargarPDF(rem);
-      ok++;
-    }catch(e){ console.error('procesarColaPDF',e); }
-  }
-  if(ok>0)toast('⬆️ Subiendo '+ok+' PDF(s) a Drive…','ok',4000);
-  actualizarBadgePendientes();
+  _procPDFEnCurso=true;
+  try{
+    let ok=0;
+    for(const entry of [...cola]){
+      const rem=remisiones.find(x=>String(x.id)===String(entry.id));
+      if(!rem||!rem.data){ console.warn('PDF en cola sin datos locales:',entry.folio); continue; }
+      try{
+        descargarPDF(rem);
+        ok++;
+      }catch(e){ console.error('procesarColaPDF',e); }
+    }
+    if(ok>0)toast('⬆️ Subiendo '+ok+' PDF(s) a Drive…','ok',4000);
+    actualizarBadgePendientes();
+  }finally{ _procPDFEnCurso=false; }
 }
 
 function addRow(d={}){if(_formBloqueado)return;items.push({_id:_id++,qty:'',clave:'',desc:'',precio:'',iva:ivaGlobal,...d});renderTable();calcTotals()}
@@ -1619,13 +1673,13 @@ function renderTable(){
     const isEmpty=(!it.qty||+it.qty===0)&&!it.clave&&!it.desc;
     if(isEmpty) tr.classList.add('tr-empty');
     tr.innerHTML=`<td class="td-n">${idx+1}</td>
-<td class="td-c"><input class="ti c" type="number" min="0" value="${esc(it.qty)}" placeholder="0" data-id="${it._id}" data-f="qty" oninput="upd(this)" onclick="this.select()"></td>
+<td class="td-c"><input class="ti c" type="number" inputmode="numeric" min="0" value="${esc(it.qty)}" placeholder="0" data-id="${it._id}" data-f="qty" oninput="upd(this)" onclick="this.select()"></td>
 <td class="td-cl" style="position:relative"><input class="ti cl" type="text" value="${esc(it.clave)}" placeholder="CÓDIGO" data-id="${it._id}" data-f="clave" oninput="upd(this);showPP(this)" onblur="hidePP(this)" onclick="this.select();showPP(this)"><div class="sp" id="pp${it._id}" style="top:34px;left:0;min-width:280px" onmousedown="event.preventDefault()"></div></td>
 <td><input class="ti" type="text" value="${esc(it.desc)}" placeholder="Descripción" data-id="${it._id}" data-f="desc" oninput="upd(this)"></td>
 <td class="td-r" style="position:relative">
   <div style="display:flex;align-items:center;gap:4px">
     ${(+it.costo>0&&+it.precio>0)?`<div id="margen${it._id}" class="no-print" onclick="_infoMargen(${it._id})" style="cursor:pointer;font-size:9px;font-weight:800;line-height:1;white-space:nowrap;color:${((+it.precio-+it.costo)/+it.precio*100)<30?'#c0392b':'#1C6E4A'}" title="Margen — toca para detalle">▣${(((+it.precio-+it.costo)/+it.precio)*100).toFixed(0)}%</div>`:'<div style="width:28px"></div>'}
-    <input class="ti r" type="number" min="0" step="0.01" value="${esc(it.precio)}" placeholder="0.00" data-id="${it._id}" data-f="precio" oninput="upd(this)" onclick="this.select()" style="flex:1;min-width:0">
+    <input class="ti r" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(it.precio)}" placeholder="0.00" data-id="${it._id}" data-f="precio" oninput="upd(this)" onclick="this.select()" style="flex:1;min-width:0">
   </div>
   ${it._precioAnt!=null?`<div class="no-print" onclick="usarPrecioAnterior(${it._id})" style="cursor:pointer;color:#1a56a0;font-size:9px;font-weight:700;white-space:nowrap;line-height:1;text-align:right" title="Precio anterior de este cliente">↩ $${(+it._precioAnt).toFixed(2)}</div>`:''}
 </td>
@@ -1914,16 +1968,23 @@ document.addEventListener('click',e=>{
   if(cPanelOpen&&!p.contains(e.target)&&!e.target.closest('.sbtn')){p.classList.remove('open');cPanelOpen=false;}
 });
 
+// Modo de redondeo del TOTAL de remisiones. Por defecto REDONDEADO (a peso, sin
+// centavos), con botón "Quitar redondeo" junto al Total para ver 2 decimales.
+// (Las cotizaciones SIEMPRE usan 2 decimales — calcTotalsCot no usa este flag.)
+let _redondearRem=true;
 // Fuente única de verdad para el cálculo financiero.
 // Devuelve {sub, iva, desc, tot, arts, pzs} con el mismo redondeo en todos los contextos.
-function _calcTot(arr,descPct){
+// `redondear` opcional: si se omite usa el flag de sesión _redondearRem; al regenerar
+// un PDF guardado se pasa el modo que tenía esa remisión (para que coincida).
+function _calcTot(arr,descPct,redondear){
   // El DESCUENTO se aplica al SUBTOTAL ANTES del IVA: el IVA se calcula sobre la
   // base ya descontada (estándar de facturación MX). Así descontar también baja el IVA.
   let sub=0,iva=0,arts=0,pzs=0;
   const pct=(+descPct||0)/100;
   arr.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const base=q*p;sub+=base;iva+=base*(1-pct)*(v/100);arts++;pzs+=q;}});
   const desc=sub*pct,totRaw=sub-desc+iva;
-  return{sub,iva,desc,tot:iva===0?Math.round(totRaw):Math.round(totRaw*100)/100,arts,pzs};
+  const redon=(redondear===undefined)?_redondearRem:redondear;
+  return{sub,iva,desc,tot:redon?Math.round(totRaw):Math.round(totRaw*100)/100,arts,pzs};
 }
 function calcTotals(){
   const dp=+document.getElementById('descPct').value||0;
@@ -1941,6 +2002,27 @@ function calcTotals(){
     if(sd)sd.textContent=tot>0?fmt(tot)+' MXN':'$—';
   }
   autosave();
+}
+// Botón "Quitar redondeo / Redondear" junto al Total de la remisión.
+function _syncBtnRedondeo(){
+  const b=document.getElementById('btnRedondeo');
+  if(b)b.textContent=_redondearRem?'🔢 Quitar redondeo':'↩ Redondear total';
+}
+function toggleRedondeoRem(){
+  _redondearRem=!_redondearRem;
+  _syncBtnRedondeo();
+  calcTotals();
+  // Reflejar el modo en la remisión activa para que el PDF y el saldo coincidan.
+  const r=remisiones.find(x=>String(x.id)===String(remActualId));
+  if(r){
+    if(r.data)r.data.redondear=_redondearRem;
+    const dp=+(document.getElementById('descPct')?.value||0);
+    const{tot}=_calcTot(items,dp);
+    r.total=tot; r.saldo=Math.max(0,Math.round((tot-_sumaPagos(r))*100)/100);
+    persistirRemisiones();
+  }
+  autosave();
+  toast(_redondearRem?'Total redondeado a peso':'Mostrando centavos','ok',2500);
 }
 function fmt(n){return'$'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',')}
 function n2l(n){let e=Math.floor(n),d=Math.round((n-e)*100);if(d>=100){e+=Math.floor(d/100);d=d%100;}return words(e)+' PESOS '+String(d).padStart(2,'0')+'/100 MXN'}
@@ -1967,6 +2049,7 @@ function snap(){
     d_asesor:document.getElementById('d_asesor').value,d_pago:document.getElementById('d_pago').value,
     obs:document.getElementById('obs').value,
     descPct:document.getElementById('descPct').value,items,
+    redondear:_redondearRem,
     _firma:_firmaData||null};
 }
 function restore(data){
@@ -1975,6 +2058,9 @@ function restore(data){
   const fb=document.getElementById('folioBadge');if(fb){fb.innerText=data.folio||'REM-0001';syncFolio(fb.innerText);}
   ['c_nombre','c_dir','c_cp','c_tel','d_asesor','obs'].forEach(f=>s(f,data[f]));
   s('d_pago',data.d_pago);s('descPct',data.descPct??0);
+  // Restaurar el modo de redondeo guardado con la remisión (default: redondeado)
+  _redondearRem=(data.redondear!==false);
+  _syncBtnRedondeo();
   items=(data.items||[]).map(it=>({...it,_id:_id++}));
   // Restaurar firma si había una guardada
   _firmaData=data._firma||null;
@@ -2164,43 +2250,46 @@ function _encolarRemision(rem){
 }
 
 async function procesarColaRemisiones(){
-  if(!isOnline)return;
+  if(!isOnline||_procRemEnCurso)return;
   const url=getScriptUrl();if(!url)return;
   const cola=leerSeguro('cola_remisiones',[]);
   if(!cola.length)return;
-  // Procesar en ORDEN DE CREACIÓN (ts ascendente) para que el servidor
-  // asigne los folios REM- en el orden real en que se crearon las remisiones.
-  const ordenada=[...cola].sort((a,b)=>(a.ts||0)-(b.ts||0));
-  let ok=0;
-  for(const item of ordenada){
-    try{
-      const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
-        body:JSON.stringify({tipo:'remision',...item})});
-      if(res.ok){
-        const d=await res.json();
-        if(d&&d.ok){
-          _dequeueRemision(item.id);
-          // Buscar por id (UUID) primero — el folio puede haber cambiado de TMP- a REM-
-          const r=remisiones.find(r=>String(r.id)===String(item.id))
-                 ||remisiones.find(r=>r.folio===item.folio);
-          if(r){
-            if(d.folio)_aplicarFolioDefinitivo(r,d.folio);
-            r.sincronizado=true;
-            persistirRemisiones();
-            _encolarPDFsiHace(r);
+  _procRemEnCurso=true;
+  try{
+    // Procesar en ORDEN DE CREACIÓN (ts ascendente) para que el servidor
+    // asigne los folios REM- en el orden real en que se crearon las remisiones.
+    const ordenada=[...cola].sort((a,b)=>(a.ts||0)-(b.ts||0));
+    let ok=0;
+    for(const item of ordenada){
+      try{
+        const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
+          body:JSON.stringify({tipo:'remision',...item})});
+        if(res.ok){
+          const d=await res.json();
+          if(d&&d.ok){
+            _dequeueRemision(item.id);
+            // Buscar por id (UUID) primero — el folio puede haber cambiado de TMP- a REM-
+            const r=remisiones.find(r=>String(r.id)===String(item.id))
+                   ||remisiones.find(r=>r.folio===item.folio);
+            if(r){
+              if(d.folio)_aplicarFolioDefinitivo(r,d.folio);
+              r.sincronizado=true;
+              persistirRemisiones();
+              _encolarPDFsiHace(r);
+            }
+            ok++;
           }
-          ok++;
         }
-      }
-    }catch(e){}
-  }
-  if(ok>0){
-    toast('Remisiones sincronizadas: '+ok+' ✓','ok');
-    procesarColaPDF();
-    // Recargar cobros INMEDIATAMENTE después de sincronizar (para que se vea en tiempo real)
-    cargarCobros(true);
-  }
-  actualizarBadgePendientes();
+      }catch(e){}
+    }
+    if(ok>0){
+      toast('Remisiones sincronizadas: '+ok+' ✓','ok');
+      procesarColaPDF();
+      // Recargar cobros INMEDIATAMENTE después de sincronizar (para que se vea en tiempo real)
+      cargarCobros(true);
+    }
+    actualizarBadgePendientes();
+  }finally{ _procRemEnCurso=false; }
 }
 function _estadoBadge(r){
   const cola=JSON.parse(localStorage.getItem('cola_offline')||'[]');
@@ -2657,17 +2746,20 @@ function _encolarElim(folio,id){
   if(!cola.some(e=>e.folio===folio)){cola.push({folio:folio,id:id||''});localStorage.setItem('cola_elim',JSON.stringify(cola));}
 }
 async function procesarColaElim(){
-  if(!navigator.onLine)return;
+  if(!navigator.onLine||_procElimEnCurso)return;
   let cola=[]; try{cola=JSON.parse(localStorage.getItem('cola_elim')||'[]');}catch(_){return;}
   if(!cola.length)return;
-  for(const e of cola.slice()){
-    try{
-      await fetch(getScriptUrl(),{method:'POST',body:JSON.stringify({tipo:'eliminar_remision',folio:e.folio,id:e.id})});
-      cola=cola.filter(x=>x.folio!==e.folio);
-      localStorage.setItem('cola_elim',JSON.stringify(cola));
-    }catch(_){ /* sin red: se reintenta al reconectar */ break; }
-  }
-  if(!cola.length){setTimeout(()=>{if(typeof bajarCobros==='function')bajarCobros();},600);}
+  _procElimEnCurso=true;
+  try{
+    for(const e of cola.slice()){
+      try{
+        await fetch(getScriptUrl(),{method:'POST',body:JSON.stringify({tipo:'eliminar_remision',folio:e.folio,id:e.id})});
+        cola=cola.filter(x=>x.folio!==e.folio);
+        localStorage.setItem('cola_elim',JSON.stringify(cola));
+      }catch(_){ /* sin red: se reintenta al reconectar */ break; }
+    }
+    if(!cola.length){setTimeout(()=>{if(typeof bajarCobros==='function')bajarCobros();},600);}
+  }finally{ _procElimEnCurso=false; }
 }
 
 // ── #7 Respaldo: exportar/restaurar TODO el estado local (recuperación ante desastre) ──
@@ -3354,7 +3446,9 @@ function descargarPDF(remOverride, forzarDescarga){
     const _itemsSrc = _regen ? (_d.items||[]) : items;
     const activeItems = _itemsSrc.filter(it=>it.clave||it.desc||(+it.qty>0));
     const dp=+(_regen ? _d.descPct : document.getElementById('descPct').value)||0;
-    const{sub,iva:ivaT,desc:desc_,tot,arts,pzs}=_calcTot(activeItems,dp);
+    // Al regenerar un PDF guardado, usar el modo de redondeo que tenía esa remisión.
+    const _redon = _regen ? (_d.redondear!==false) : undefined;
+    const{sub,iva:ivaT,desc:desc_,tot,arts,pzs}=_calcTot(activeItems,dp,_redon);
 
     // ── jsPDF init ───────────────────────────────────────
     const {jsPDF} = window.jspdf;
@@ -4351,15 +4445,55 @@ function _alertarNoAutorizado(d){
   if(d&&d.error&&String(d.error).includes('no autorizado'))
     toast('⛔ Token incorrecto — abre 🔑 Token y corrígelo','err',10000);
 }
+// Procesa la respuesta del servidor a un pago. Devuelve true si quedó RESUELTO
+// (sacar de la cola), false si debe reintentarse. Maneja el blindaje de sobrecobro:
+//   ok:true  + ajustado     → el servidor recortó el monto al saldo real restante
+//   ok:false + yaPagada     → el otro dispositivo ya la cobró → NO duplicar
+function _resolverRespuestaPago(r,pago,d){
+  if(!d) return false;
+  if(d.ok){
+    if(d.ajustado && d.montoRegistrado!=null){
+      const nuevo=Math.round((+d.montoRegistrado)*100)/100;
+      if(pago){pago.monto=nuevo;pago.tipo='pago_completo';pago.saldo_despues=0;pago._ajustado=true;}
+      if(r){r.saldo=(d.saldo!=null)?+d.saldo:0;r.estado=(r.saldo<=0.005?'pagado':'abono');if(r.data)r.data.pagos=[...(r.pagos||[])];}
+      persistirRemisiones();
+      toast('Se registró '+fmt(nuevo)+' — el resto ya estaba cubierto por el otro dispositivo','warn',6500);
+    } else if(d.saldo!=null && r){
+      // Saldo del servidor (incluye pagos del otro dispositivo); estado recalculado
+      // LOCALMENTE para que una anulación total quede 'pendiente' (el servidor solo
+      // distingue pagado/abono) y para preservar 'cancelada'.
+      r.saldo=+d.saldo;
+      if(r.estado!=='cancelada'){
+        const _pg=_sumaPagos(r);
+        r.estado = r.saldo<=0.005 ? 'pagado' : (_pg>0 ? 'abono' : 'pendiente');
+      }
+      persistirRemisiones();
+    }
+    if(pago){_dequeueByUUID(pago.uuid);_marcarPagoSync(pago.uuid);}
+    return true;
+  }
+  // ok:false
+  if(d.yaPagada || d.error==='ya_pagada'){
+    if(pago) pago._rechazado=true; // excluido de _sumaPagos → no infla los libros locales
+    if(r){r.saldo=0; if(r.estado!=='cancelada')r.estado='pagado'; if(r.data)r.data.pagos=[...(r.pagos||[])];}
+    persistirRemisiones();
+    if(pago){_dequeueByUUID(pago.uuid);_marcarPagoSync(pago.uuid);}
+    toast('⚠️ '+((r&&r.folio)||'La remisión')+' ya estaba cobrada por el otro dispositivo. Tu cobro NO se duplicó.','warn',7000);
+    setTimeout(()=>{if(typeof bajarCobros==='function')bajarCobros();},700);
+    return true;
+  }
+  _alertarNoAutorizado(d);
+  return false;
+}
 function _enviarPago(r,pago){
   const url=getScriptUrl();if(!url)return;
   fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
     body:JSON.stringify({tipo:'actualizar_remision',id:r.id||'',folio:r.folio,saldo:r.saldo,estado:r.estado,pago,device:DEVICE_ID})
   }).then(res=>res.json()).then(d=>{
-    if(d&&d.ok){_dequeueByUUID(pago.uuid);_marcarPagoSync(pago.uuid);
+    if(_resolverRespuestaPago(r,pago,d) && d.ok && !d.ajustado){
       // Refresco inmediato de la lista compartida (sin esperar el heartbeat de 10s)
-      setTimeout(()=>{if(typeof bajarCobros==='function')bajarCobros();},700);}
-    else _alertarNoAutorizado(d);
+      setTimeout(()=>{if(typeof bajarCobros==='function')bajarCobros();},700);
+    }
     actualizarBadgePendientes();
   }).catch(()=>{actualizarBadgePendientes();});
 }
@@ -4375,23 +4509,27 @@ function _dequeueByUUID(uuid){
   guardarSeguro('cola_offline',JSON.stringify(cola.filter(p=>p.pago&&p.pago.uuid!==uuid)));
 }
 async function procesarCola(){
-  if(!isOnline)return;
+  if(!isOnline||_procPagosEnCurso)return;
   const url=getScriptUrl();if(!url)return;
   const cola=leerSeguro('cola_offline',[]);
   if(!cola.length)return;
-  let enviados=0;
-  for(const item of [...cola]){
-    try{
-      const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
-        body:JSON.stringify({tipo:'actualizar_remision',id:item.id||'',folio:item.folio,saldo:item.saldo,estado:item.estado,pago:item.pago,device:item.device})
-      });
-      const d=await res.json();
-      if(d&&d.ok){_dequeueByUUID(item.pago.uuid);_marcarPagoSync(item.pago.uuid);enviados++;}
-      else _alertarNoAutorizado(d);
-    }catch(e){}
-  }
-  actualizarBadgePendientes();
-  if(enviados>0)toast('Cola sincronizada: '+enviados+' pago(s) enviado(s) ✓','ok');
+  _procPagosEnCurso=true;
+  try{
+    let enviados=0;
+    for(const item of [...cola]){
+      try{
+        const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
+          body:JSON.stringify({tipo:'actualizar_remision',id:item.id||'',folio:item.folio,saldo:item.saldo,estado:item.estado,pago:item.pago,device:item.device})
+        });
+        const d=await res.json();
+        // Reconciliar contra la remisión local correcta (maneja sobrecobro: ajustado / ya_pagada)
+        const remLoc=remisiones.find(x=>String(x.id)===String(item.id)||x.folio===item.folio)||null;
+        if(_resolverRespuestaPago(remLoc,item.pago,d)) enviados++;
+      }catch(e){}
+    }
+    actualizarBadgePendientes();
+    if(enviados>0)toast('Cola sincronizada: '+enviados+' pago(s) enviado(s) ✓','ok');
+  }finally{ _procPagosEnCurso=false; }
 }
 function actualizarBadgePendientes(){
   const pagos=leerSeguro('cola_offline',[]).length;
@@ -4700,7 +4838,7 @@ function toast(msg,type='',dur=2800){const t=document.getElementById('toast');cl
       <div class="rr" style="border:none;margin-top:6px">
         <span class="rl">Descuento global</span>
         <div style="display:flex;align-items:center;gap:5px" class="no-print">
-          <input class="di" type="number" id="cot_descPct" value="0" min="0" max="100" oninput="calcTotalsCot()">
+          <input class="di" type="number" inputmode="decimal" id="cot_descPct" value="0" min="0" max="100" oninput="calcTotalsCot()">
           <span style="font-size:12px;color:var(--muted)">%</span>
         </div>
       </div>
@@ -4762,31 +4900,51 @@ function uuidCot(){ return 'cot_'+Date.now().toString(36)+'_'+Math.random().toSt
 
 // ── Cola offline (clave distinta a cotizador.html) ────────────────────────
 function _cotEncolar(e){
-  guardarSeguro('cola_cot_r',JSON.stringify(leerSeguro('cola_cot_r',[]).filter(x=>x.id!==e.id).concat(e)));
+  // NUNCA guardar el base64 del PDF en localStorage: pesa ~400-600KB por cotización y
+  // 200 en el historial reventarían la cuota (~5MB). Se regenera desde `data` al subir.
+  const {pdf,..._light}=e;
+  guardarSeguro('cola_cot_r',JSON.stringify(leerSeguro('cola_cot_r',[]).filter(x=>x.id!==_light.id).concat(_light)));
   // Guardar en historial local para mostrar en overlay de historial
-  if(typeof _cotGuardarHistorial==='function') _cotGuardarHistorial(e);
+  if(typeof _cotGuardarHistorial==='function') _cotGuardarHistorial(_light);
   _actualizarBadgeCot();
 }
 function _cotDesencolar(id){ guardarSeguro('cola_cot_r',JSON.stringify(leerSeguro('cola_cot_r',[]).filter(x=>x.id!==id))); }
 
 async function _procesarColaCotR(){
-  if(!isOnline)return;
+  if(!isOnline||_procCotEnCurso)return;
   const url=getScriptUrl();if(!url)return;
   const cola=leerSeguro('cola_cot_r',[]);
   if(!cola.length)return;
+  _procCotEnCurso=true;
+  try{
   for(const entry of [...cola]){
     try{
       let folio=entry.folio, b64=entry.pdf;
-      if(String(folio).startsWith('TMP-')&&window.jspdf){
+      // El PDF ya no se guarda en localStorage → se regenera aquí desde los datos.
+      // Si jsPDF aún no cargó, dejar la cotización en la cola y reintentar luego.
+      if(!b64 && !window.jspdf){ continue; }
+      if(String(folio).startsWith('TMP-')){
         const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({tipo:'folio',token:API_TOKEN})}).then(x=>x.json()).catch(()=>null);
         if(r&&r.folio){ folio=r.folio; }
+      }
+      if(!b64 && window.jspdf && entry.data){
         const doc=_construirPDFCot({...entry.data,folio});
         if(doc) b64=doc.output('datauristring').split(',')[1];
       }
       const cli=String(entry.cliente||'CLIENTE').replace(/[^A-Z0-9ÁÉÍÓÚÑ]/gi,'_').toUpperCase();
       const fn='COTIZACION_'+folio+'_'+cli+'.pdf';
+      // Detalle compacto de la cotización: lo que se guarda en la col "Detalle" del Excel.
+      // Permite al ERP analizar qué productos se cotizaron sin abrir el PDF.
+      const _detalleJson=(entry.data&&entry.data.items)?JSON.stringify({
+        descPct:+entry.data.descPct||0,
+        rfc:entry.data.c_rfc||'',
+        items:(entry.data.items||[])
+          .filter(it=>+it.qty>0&&(it.clave||it.desc))
+          .map(it=>({c:it.clave||'',d:it.desc||'',q:+it.qty||0,p:+it.precio||0,v:+it.iva||0}))
+      }):'';
       const body={tipo:'cotizacion',token:API_TOKEN,id:entry.id,folio,cliente:entry.cliente,
         fecha:entry.fecha,total:entry.total,filename:fn,pdf:b64,device:DEVICE_ID,
+        detalle:_detalleJson,
         datosCliente:{
           nombre:   entry.data?.c_nombre||entry.cliente,
           tel:      entry.data?.c_tel||'',
@@ -4808,6 +4966,7 @@ async function _procesarColaCotR(){
       }
     }catch(e){ console.warn('_procesarColaCotR',e); }
   }
+  }finally{ _procCotEnCurso=false; }
   _actualizarBadgeCot();
 }
 
@@ -5010,7 +5169,7 @@ function renderTableCot(){
       ?`<div style="font-size:10px;color:var(--green);cursor:pointer;white-space:nowrap" onclick="_cotUsarPrecioAnt(${it._id})">↩ $${it._precioAnt}</div>`:'';
     return `<tr id="cotrow-${it._id}">
       <td class="c" style="color:var(--muted);font-size:11px">${idx+1}</td>
-      <td class="c"><input class="ti" type="number" value="${it.qty}" placeholder="0" min="0" style="width:60px;text-align:center"
+      <td class="c"><input class="ti" type="number" inputmode="numeric" value="${it.qty}" placeholder="0" min="0" style="width:60px;text-align:center"
         onchange="_cotAct(${it._id},'qty',this.value)" oninput="calcTotalsCot()"></td>
       <td style="position:relative"><input class="ti" type="text" value="${esc(it.clave)}" placeholder="Código"
         oninput="_cotPpFiltrar(event,${it._id})" onfocus="_cotPpFiltrar(event,${it._id})"
@@ -5019,7 +5178,7 @@ function renderTableCot(){
       <td><input class="ti" type="text" value="${esc(it.desc)}" placeholder="Descripción"
         onchange="_cotAct(${it._id},'desc',this.value)"></td>
       <td class="r"><div style="display:flex;flex-direction:column;align-items:flex-end">
-        <input class="ti" type="number" value="${it.precio}" placeholder="0.00" min="0" step="0.01" style="text-align:right"
+        <input class="ti" type="number" inputmode="decimal" value="${it.precio}" placeholder="0.00" min="0" step="0.01" style="text-align:right"
           onchange="_cotAct(${it._id},'precio',this.value)" oninput="calcTotalsCot()">
         ${precHint}
       </div></td>
