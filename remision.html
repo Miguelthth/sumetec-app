@@ -358,7 +358,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   <button class="btn btn-g" onclick="window.print()">🖨️ Imprimir</button>
   <!-- PDF remisión (oculto en cot) / PDF cotización (oculto en rem) -->
   <button class="btn btn-p" id="btnDescargarPDF" onclick="descargarPDFSiRegistrado()" style="opacity:.45;cursor:not-allowed" disabled>🔒 PDF</button>
-  <button class="btn btn-p" id="btnPDFCot" style="display:none" onclick="_generarCotizacion()">📄 PDF Cotización</button>
+  <button class="btn btn-g" id="btnGenerarCot" style="display:none" onclick="_generarCotizacion()">✅ Generar cotización</button>
+  <button class="btn btn-p" id="btnDescargarCot" style="display:none;opacity:.45;cursor:not-allowed" disabled onclick="_descargarCotGenerada()">🔒 PDF</button>
   <span id="badgePendientes"></span>
 </div>
 <!-- Popup global de productos — fixed, escapa el recorte de la tabla -->
@@ -472,7 +473,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <th class="c" style="width:38px">#</th>
       <th class="c" style="width:80px">Cantidad</th>
       <th style="width:130px">Código</th>
-      <th>Descripción</th>
+      <th>Descripción <span id="btnModoRegalo" class="no-print" onclick="toggleModoRegalo(event)" title="Actívalo cuando vayas a dar un regalo: aparece la opción 🎁 bajo cada precio" style="float:right;cursor:pointer;font-size:10px;font-weight:700;background:rgba(255,255,255,.18);padding:2px 8px;border-radius:11px;user-select:none">🎁 Regalo</span></th>
       <th class="r" style="width:120px">Precio Unit.</th>
       <th class="c th-iva" style="width:80px" onclick="toggleIvaPopup(event)">IVA %<div class="iva-popup" id="ivaPopup"><div class="iva-opt sel" onclick="setIvaGlobal(0,event)">0%</div><div class="iva-opt" onclick="setIvaGlobal(8,event)">8%</div><div class="iva-opt" onclick="setIvaGlobal(16,event)">16%</div></div></th>
       <th class="r" style="width:110px">Importe</th>
@@ -588,6 +589,14 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         <input id="montoAbono" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="$ Monto a abonar" class="monto-input-grande" style="flex:1;margin-bottom:0">
         <button class="btn btn-g" style="flex-shrink:0;padding:12px 16px;font-size:13px;font-weight:700;white-space:nowrap;border-radius:10px" onclick="setAtajoMonto(1)">Total →</button>
       </div>
+      <label class="no-print" style="font-size:11px;color:var(--muted);font-weight:600;display:block;margin-bottom:2px">💳 Método de pago <span style="font-weight:400">(cómo pagó — distinto de las condiciones de arriba)</span></label>
+      <select id="metodoAbono" class="no-print" style="width:100%;border:2px solid var(--border);border-radius:10px;padding:10px;font-size:14px;font-family:inherit;margin-bottom:8px;background:#fff">
+        <option value="Efectivo">💵 Efectivo</option>
+        <option value="Transferencia">🏦 Transferencia</option>
+        <option value="Cheque">📝 Cheque</option>
+        <option value="Tarjeta">💳 Tarjeta</option>
+      </select>
+      <input id="notasAbono" class="no-print" type="text" placeholder="Notas del pago (opcional)" style="width:100%;border:2px solid var(--border);border-radius:10px;padding:10px;font-size:14px;font-family:inherit;margin-bottom:10px">
       <button class="btn btn-p" id="btnRegistrar" style="width:100%;justify-content:center;padding:16px;font-size:16px;font-weight:800;border-radius:12px;letter-spacing:.3px" onclick="registrarTodo()">✅ REGISTRAR</button>
     </div>
   </div>
@@ -624,7 +633,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <span style="font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Saldo pendiente</span>
       <span style="font-size:22px;font-weight:800;color:#c0392b" id="prSaldo">$0.00</span>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
+    <div style="display:flex;gap:8px;margin-bottom:10px">
       <input id="prMonto" type="number" inputmode="decimal" min="0.01" step="0.01"
         placeholder="$ Monto a pagar"
         style="flex:1;border:2px solid var(--border);border-radius:10px;padding:12px;font-size:15px;font-family:inherit;outline:none"
@@ -633,6 +642,19 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         style="background:var(--navy);color:#fff;border:none;border-radius:10px;padding:12px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit">
         ↓ Total
       </button>
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:var(--muted);font-weight:600">Método de pago</label>
+      <select id="prMetodo" style="width:100%;border:2px solid var(--border);border-radius:10px;padding:11px;font-size:14px;font-family:inherit;margin-top:3px;background:#fff">
+        <option value="Efectivo">💵 Efectivo</option>
+        <option value="Transferencia">🏦 Transferencia</option>
+        <option value="Cheque">📝 Cheque</option>
+        <option value="Tarjeta">💳 Tarjeta</option>
+      </select>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:11px;color:var(--muted);font-weight:600">Notas del pago (opcional)</label>
+      <input id="prNotas" type="text" placeholder="Ej. ref. transferencia, pagó la esposa…" style="width:100%;border:2px solid var(--border);border-radius:10px;padding:11px;font-size:14px;font-family:inherit;margin-top:3px">
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <button onclick="closeOv('ovPagoRapido')"
@@ -683,6 +705,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 
 <div class="ov" id="ovEmpresa"><div class="modal"><div class="modal-hd"><div class="modal-title">🏢 Datos de Mi Empresa</div><button class="mx" onclick="closeOv('ovEmpresa')">✕</button></div>
   <div class="info-box">Estos datos aparecen en el pie de cada cotización y se guardan en tu navegador.</div>
+  <div class="fg"><label>👤 Vendedor / Nombre de este celular</label><input id="e_vendedor" type="text" placeholder="Ej. Miguel"><div style="font-size:11px;color:var(--muted);margin-top:3px">Aparece en la columna "Dispositivo" del Excel para saber quién registró cada venta. Es solo de este celular.</div></div>
   <div class="fg"><label>Nombre de la empresa</label><input id="e_nombre" type="text" placeholder="SUMETEC"></div>
   <div class="fg"><label>RFC</label><input id="e_rfc" type="text" placeholder="SUM-XXXXXX-XX0"></div>
   <div class="fg"><label>Dirección</label><input id="e_dir" type="text" placeholder="Calle, Ciudad, C.P."></div>
@@ -939,7 +962,7 @@ function reconciliarPendientes(){
   const porEdad=remisiones.slice().reverse();
   porEdad.forEach((r,i)=>{
     if(r&&!r.sincronizado&&!enCola.has(r.id)){
-      cola.push({id:r.id,folio:r.folio,cliente:r.cliente,fecha:r.fecha,total:r.total,saldo:r.saldo,estado:r.estado,device:DEVICE_ID,ts:Date.now()+i});
+      cola.push({id:r.id,folio:r.folio,cliente:r.cliente,fecha:r.fecha,total:r.total,saldo:r.saldo,estado:r.estado,device:_deviceLabel_(),ts:Date.now()+i});
       addR++;
     }
   });
@@ -951,7 +974,7 @@ function reconciliarPendientes(){
   for(const r of remisiones){
     for(const p of (r.pagos||[])){
       if(p&&p._sync!==true&&!enColaP.has(p.uuid)){
-        colaP.push({folio:r.folio,saldo:r.saldo,estado:r.estado,pago:p,device:DEVICE_ID,ts:Date.now()});
+        colaP.push({folio:r.folio,saldo:r.saldo,estado:r.estado,pago:p,device:_deviceLabel_(),ts:Date.now()});
         addP++;
       }
     }
@@ -962,6 +985,9 @@ function reconciliarPendientes(){
 // ── Conectividad & Device ID ──────────────────────────────────
 let isOnline=true,_hbTimer=null;
 function getDeviceId(){let id=localStorage.getItem('device_id');if(!id){id='dev_'+Date.now().toString(36)+'_'+Math.random().toString(36).substr(2,9);localStorage.setItem('device_id',id);}return id;}
+// Etiqueta legible del celular para el Excel: usa el nombre del vendedor si se configuró
+// en 🏢 Mi Empresa; si no, cae al device_id técnico. (El device_id sigue siendo la huella interna.)
+function _deviceLabel_(){ try{ const v=(empresa&&empresa.vendedor||'').trim(); return v||DEVICE_ID; }catch(_){ return DEVICE_ID; } }
 const DEVICE_ID=getDeviceId();
 
 function setOnlineState(online){
@@ -1183,14 +1209,16 @@ function aplicarPago(rem, monto, opts){
   const fecha = new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
   const uuid  = uuidPago();
   rem.pagos = rem.pagos || [];
+  const metodo = opts.metodo || 'Efectivo'; // método de pago (efectivo/transferencia/…)
+  const notas  = opts.notas || '';          // notas del pago (opcional)
   let pago;
   if(esCompleto){
-    pago = {uuid, tipo:'pago_completo', monto:saldoActual, fecha, saldo_despues:0, device:DEVICE_ID};
+    pago = {uuid, tipo:'pago_completo', monto:saldoActual, fecha, saldo_despues:0, device:_deviceLabel_(), metodo, notas};
     rem.pagos.push(pago);
     rem.saldo = 0; rem.estado = 'pagado';
   } else {
     const sd = r2(saldoActual - m);
-    pago = {uuid, tipo:'abono', monto:m, fecha, saldo_despues:sd, device:DEVICE_ID};
+    pago = {uuid, tipo:'abono', monto:m, fecha, saldo_despues:sd, device:_deviceLabel_(), metodo, notas};
     rem.pagos.push(pago);
     rem.saldo = sd; rem.estado = 'abono';
   }
@@ -1551,7 +1579,7 @@ async function guardarEnDrive(doc,folio,cliente,total,filename,remParam){
     estado:remActiva?remActiva.estado:'pendiente',
     horaDescarga, lat:gps?gps.lat:'', lng:gps?gps.lng:'',
     datosCliente,
-    pdf:b64, device:DEVICE_ID};
+    pdf:b64, device:_deviceLabel_()};
   _guardarEnColaPDF(entry); // nunca se pierde para Drive
   actualizarBadgePendientes();
   if(!isOnline){ toast('Sin conexión — el PDF se subirá a Drive al volver la señal','warn',4000); return; }
@@ -1559,17 +1587,25 @@ async function guardarEnDrive(doc,folio,cliente,total,filename,remParam){
   fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(entry)})
     .then(r=>r.json())
     .then(d=>{
-      if(d&&d.ok){
+      if(d&&d.ok&&d.url){
+        // El PDF SÍ se guardó en Drive (hay URL) → recién entonces lo sacamos de la cola.
         _dequeuePDF(entry.id||entry.folio);
         if(d.folio&&remActiva)_aplicarFolioDefinitivo(remActiva,d.folio);
         toast('Guardado en Drive ✓','ok');
         cargarFolioRemoto();
+      } else if(d&&d.ok&&d.pdfOk===false){
+        // La FILA se registró pero el PDF NO se guardó en Drive → mantener en cola + AVISAR.
+        _bumpIntentoPDF(entry.id||entry.folio);
+        toast('⚠️ '+(entry.folio||'Remisión')+': se guardó en el Excel pero el PDF NO subió. Se reintentará.','warn',7000);
+        _revisarFallas();
       } else {
+        _bumpIntentoPDF(entry.id||entry.folio);
         toast('Drive: '+(d&&d.error?d.error:'se reintentará')+' (PDF en cola)','warn',4000);
+        _revisarFallas();
       }
       actualizarBadgePendientes();
     })
-    .catch(e=>{console.error('guardarEnDrive',e);toast('Se reintentará subir el PDF al volver la señal','warn',3500);actualizarBadgePendientes();});
+    .catch(e=>{console.error('guardarEnDrive',e);_bumpIntentoPDF(entry.id||entry.folio);toast('Se reintentará subir el PDF al volver la señal','warn',3500);_revisarFallas();actualizarBadgePendientes();});
 }
 
 // ── Cola de PDFs (base64) — uno por remisión (sobreescribe el anterior) ──
@@ -1683,9 +1719,10 @@ function renderTable(){
   </div>
   ${it._precioAnt!=null?`<div class="no-print" onclick="usarPrecioAnterior(${it._id})" style="cursor:pointer;color:#1a56a0;font-size:9px;font-weight:700;white-space:nowrap;line-height:1;text-align:right" title="Precio anterior de este cliente">↩ $${(+it._precioAnt).toFixed(2)}</div>`:''}
 </td>
-<td class="td-c td-iva">${it.iva||0}%</td>
-<td class="td-imp" id="imp${it._id}">${fmt(imp(it))}</td>
+<td class="td-c td-iva">${it.regalo?'—':(it.iva||0)+'%'}</td>
+<td class="td-imp" id="imp${it._id}">${_impCellHtml(it)}</td>
 <td class="td-del no-print"><button class="del-btn" onclick="delRow(${it._id})">✕</button></td>`;
+    if(it.regalo) tr.style.background='#F2FBF6';
     if(_formBloqueado){
       tr.querySelectorAll('.ti').forEach(el=>el.disabled=true);
       const db=tr.querySelector('.del-btn');if(db)db.style.display='none';
@@ -1696,7 +1733,7 @@ function renderTable(){
 function upd(input){
   const id=+input.dataset.id,f=input.dataset.f,it=items.find(i=>i._id===id);if(!it)return;
   it[f]=['qty','precio','iva'].includes(f)?(input.value===''?'':+input.value):input.value;
-  const el=document.getElementById('imp'+id);if(el)el.textContent=fmt(imp(it));calcTotals();
+  const el=document.getElementById('imp'+id);if(el)el.innerHTML=_impCellHtml(it);calcTotals();
   // Bug 3: actualizar badge de margen en tiempo real al cambiar precio
   if(f==='precio'){
     const mb=document.getElementById('margen'+id);
@@ -1707,7 +1744,39 @@ function upd(input){
     }
   }
 }
-function imp(it){return(+it.qty||0)*(+it.precio||0)}
+function imp(it){return it.regalo?0:(+it.qty||0)*(+it.precio||0)} // regalo no se cobra
+// Modo regalo: se activa con el botón 🎁 del encabezado. Apagado por defecto → no carga
+// las opciones de regalo en cada línea (no siempre se dan regalos).
+let _modoRegalo=false;
+function toggleModoRegalo(e){
+  if(e)e.stopPropagation();
+  _modoRegalo=!_modoRegalo;
+  const b=document.getElementById('btnModoRegalo');
+  if(b){
+    b.style.background=_modoRegalo?'#1C6E4A':'rgba(255,255,255,.18)';
+    b.style.color=_modoRegalo?'#fff':'';
+    b.textContent=_modoRegalo?'🎁 Regalo ✓':'🎁 Regalo';
+  }
+  renderTable();
+  toast(_modoRegalo?'Modo regalo activo — toca "🎁 regalo" bajo el precio del artículo':'Modo regalo desactivado','ok',2500);
+}
+// Contenido de la celda Importe: el monto. El enlace "🎁 regalo" solo aparece si el modo
+// regalo está activo (o si la línea YA es regalo, para poder quitarlo).
+function _impCellHtml(it){
+  if(it.regalo)
+    return '<span onclick="toggleRegalo('+it._id+')" title="Quitar regalo (se cobrará normal)" style="color:#1C6E4A;font-weight:800;font-size:10.5px;cursor:pointer;white-space:nowrap">🎁 REGALO</span>';
+  if(_modoRegalo)
+    return fmt(imp(it))
+      +'<div class="no-print" onclick="toggleRegalo('+it._id+')" title="Marcar como regalo (no se cobra)" style="font-size:9px;color:#1C6E4A;opacity:.6;cursor:pointer;line-height:1;margin-top:2px">🎁 regalo</div>';
+  return fmt(imp(it));
+}
+// Marca/desmarca un artículo como REGALO (no se cobra, pero descuenta inventario)
+function toggleRegalo(id){
+  const it=items.find(i=>i._id===id);if(!it)return;
+  it.regalo=!it.regalo;
+  renderTable();calcTotals();
+  toast(it.regalo?'🎁 Marcado como REGALO (no se cobra)':'Regalo quitado — se cobra normal','ok',2500);
+}
 function fmtPrecio(n){return n===''||n===null||n===undefined?'':parseFloat(n).toFixed(2)}
 function esc(v){return v==null?'':String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 
@@ -1981,7 +2050,10 @@ function _calcTot(arr,descPct,redondear){
   // base ya descontada (estándar de facturación MX). Así descontar también baja el IVA.
   let sub=0,iva=0,arts=0,pzs=0;
   const pct=(+descPct||0)/100;
-  arr.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;if(q>0&&p>0){const base=q*p;sub+=base;iva+=base*(1-pct)*(v/100);arts++;pzs+=q;}});
+  arr.forEach(it=>{const q=+it.qty||0,p=+it.precio||0,v=+it.iva||0;
+    if(q>0)pzs+=q; // piezas incluyen regalos (salen del inventario)
+    if(q>0&&p>0&&!it.regalo){const base=q*p;sub+=base;iva+=base*(1-pct)*(v/100);arts++;} // REGALO no se cobra
+  });
   const desc=sub*pct,totRaw=sub-desc+iva;
   const redon=(redondear===undefined)?_redondearRem:redondear;
   return{sub,iva,desc,tot:redon?Math.round(totRaw):Math.round(totRaw*100)/100,arts,pzs};
@@ -2073,7 +2145,7 @@ function restore(data){
 function guardar(){guardarSeguro('r_draft',JSON.stringify(snap()));}
 function guardarYRegistrar(){
   const sn=snap();
-  const activos=sn.items.filter(i=>(+i.qty>0)&&(+i.precio>0));
+  const activos=sn.items.filter(i=>(+i.qty>0)&&((+i.precio>0)||i.regalo));
   if(activos.length){registrarRemision();}
   else{guardar();toast('Borrador guardado','ok');}
 }
@@ -2089,7 +2161,7 @@ function loadDraft(){
 async function registrarRemision(gpsParam){
   console.log('→ registrarRemision INICIO');
   const sn=snap();
-  const activos=sn.items.filter(i=>(+i.qty>0)&&(+i.precio>0));
+  const activos=sn.items.filter(i=>(+i.qty>0)&&((+i.precio>0)||i.regalo));
   if(!activos.length){toast('Agrega al menos un producto con cantidad y precio','err');return;}
   const{tot}=_calcTot(activos,sn.descPct);
   // Guardar GPS en el snap si viene del botón REGISTRAR
@@ -2181,8 +2253,10 @@ async function sincronizarRemision(rem){
   // del envío, la remisión queda en la cola y se reintenta al reabrir.
   _encolarRemision(rem);
   if(!isOnline){console.log('⚠ offline, esperando señal'); return;}
+  const _tot=_totalesERP(rem);
   const body={tipo:'remision',token:API_TOKEN,id:rem.id,folio:rem.folio,cliente:rem.cliente,fecha:rem.fecha,
-    total:rem.total,saldo:rem.saldo,estado:rem.estado,device:DEVICE_ID};
+    total:rem.total,saldo:rem.saldo,estado:rem.estado,device:_deviceLabel_(),
+    items:_itemsERP(rem),subtotal:_tot.subtotal,descMonto:_tot.descMonto,ivaMonto:_tot.ivaMonto,ivaPct:_tot.ivaPct}; // #15: detalle+totales para el ERP
   try{
     console.log('→ POST al servidor:', body);
     const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)});
@@ -2238,12 +2312,33 @@ function _aplicarFolioDefinitivo(rem,nuevoFolio){
   return true;
 }
 
+// #15: detalle compacto de artículos para el ERP {c,d,q,p,v,co:costo,r:regalo}
+// REGALO → p:0 (no se cobra) pero conserva costo y r:1 (para descontar inventario y sumar regalos).
+function _itemsERP(rem){
+  const its=(rem&&rem.data&&rem.data.items)||[];
+  return its.filter(it=>(+it.qty>0)&&(it.clave||it.desc))
+            .map(it=>({c:it.clave||'',d:it.desc||'',q:+it.qty||0,
+                       p:it.regalo?0:(+it.precio||0),v:it.regalo?0:(+it.iva||0),
+                       co:+it.costo||0,r:it.regalo?1:0}));
+}
+// #15: totales de la venta para el ERP (subtotal, descuento, IVA monto y % de IVA efectivo).
+function _totalesERP(rem){
+  const its=(rem&&rem.data&&rem.data.items)||[];
+  const dp=+(rem.data&&rem.data.descPct)||0;
+  const t=_calcTot(its,dp); // {sub,iva,desc,tot} — ya excluye regalos del dinero
+  const ivas=[...new Set(its.filter(i=>+i.qty>0&&+i.precio>0&&!i.regalo).map(i=>+i.iva||0))];
+  const ivaPct = ivas.length===1 ? ivas[0] : (t.sub>0?Math.round(t.iva/t.sub*100):0);
+  return {subtotal:Math.round(t.sub*100)/100, descMonto:Math.round(t.desc*100)/100,
+          ivaMonto:Math.round(t.iva*100)/100, ivaPct};
+}
 function _encolarRemision(rem){
   const cola=leerSeguro('cola_remisiones',[]);
   // Deduplica por id (UUID), no por folio (que puede ser temporal TMP-)
   if(!cola.find(r=>r.id===rem.id)){
+    const _tot=_totalesERP(rem);
     cola.push({id:rem.id,folio:rem.folio,cliente:rem.cliente,fecha:rem.fecha,
-      total:rem.total,saldo:rem.saldo,estado:rem.estado,device:DEVICE_ID,ts:Date.now()});
+      total:rem.total,saldo:rem.saldo,estado:rem.estado,device:_deviceLabel_(),ts:Date.now(),
+      items:_itemsERP(rem),subtotal:_tot.subtotal,descMonto:_tot.descMonto,ivaMonto:_tot.ivaMonto,ivaPct:_tot.ivaPct}); // #15
     guardarSeguro('cola_remisiones',JSON.stringify(cola));
   }
   actualizarBadgePendientes();
@@ -2278,9 +2373,9 @@ async function procesarColaRemisiones(){
               _encolarPDFsiHace(r);
             }
             ok++;
-          }
-        }
-      }catch(e){}
+          } else { _bumpTry('cola_remisiones',e=>e.id===item.id); }
+        } else { _bumpTry('cola_remisiones',e=>e.id===item.id); }
+      }catch(e){ _bumpTry('cola_remisiones',e=>e.id===item.id); }
     }
     if(ok>0){
       toast('Remisiones sincronizadas: '+ok+' ✓','ok');
@@ -2485,7 +2580,9 @@ async function confirmarPagoRapido(){
 
   try{
     // FUENTE ÚNICA: valida, decide pagado/abono, redondea, persiste, sincroniza y avisa.
-    const pago=aplicarPago(rem, monto);
+    const _met=document.getElementById('prMetodo')?.value||'Efectivo';
+    const _not=document.getElementById('prNotas')?.value||'';
+    const pago=aplicarPago(rem, monto, {metodo:_met, notas:_not});
     if(!pago){ if(btn){btn.disabled=false;btn.textContent='✅ Registrar pago';} return; }
     sincronizarRemision(rem); // asegurar que la fila exista en el servidor
 
@@ -2927,12 +3024,12 @@ function ajustarLogo(delta,absolute){
   applyLogoH(next);
 }
 function abrirEmpresa(){
-  ['nombre','rfc','dir','tel','tel2','email','web','slogan'].forEach(f=>{const el=document.getElementById('e_'+f);if(el)el.value=empresa[f]||''});
+  ['nombre','rfc','dir','tel','tel2','email','web','slogan','vendedor'].forEach(f=>{const el=document.getElementById('e_'+f);if(el)el.value=empresa[f]||''});
   applyLogoH(empresa.logoH||150);
   document.getElementById('ovEmpresa').classList.add('open');
 }
 function guardarEmpresa(){
-  ['nombre','rfc','dir','tel','tel2','email','web','slogan'].forEach(f=>{const el=document.getElementById('e_'+f);if(el)empresa[f]=el.value});
+  ['nombre','rfc','dir','tel','tel2','email','web','slogan','vendedor'].forEach(f=>{const el=document.getElementById('e_'+f);if(el)empresa[f]=el.value});
   empresa.logoH=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--logo-h'))||150;
   localStorage.setItem('r_empresa',JSON.stringify(empresa));renderFooter();closeOv('ovEmpresa');toast('Datos guardados ✓','ok');
 }
@@ -3571,13 +3668,14 @@ function descargarPDF(remOverride, forzarDescarga){
     y+=cardH+5;
 
     // ── TABLA DE PRODUCTOS ───────────────────────────────
+    // REGALO: la línea muestra "— REGALO" y $0.00 (no se cobra). Sin emoji: jsPDF no lo renderiza.
     const tRows=activeItems.map((it,i)=>[
       i+1,
       it.qty||'',
       it.clave||'',
-      it.desc||'',
-      fmt(parseFloat(it.precio||0)),
-      fmt((+it.qty||0)*(+it.precio||0))
+      (it.desc||'')+(it.regalo?'  — REGALO':''),
+      it.regalo?'$0.00':fmt(parseFloat(it.precio||0)),
+      it.regalo?'$0.00':fmt((+it.qty||0)*(+it.precio||0))
     ]);
 
     const tblConfig={
@@ -3982,7 +4080,7 @@ async function registrarPagoConGuardar(tipo){
   // Si no hay remisión activa → guardar primero
   if(!remActualId){
     const sn=snap();
-    const activos=sn.items.filter(i=>(+i.qty>0)&&(+i.precio>0));
+    const activos=sn.items.filter(i=>(+i.qty>0)&&((+i.precio>0)||i.regalo));
     if(!activos.length){toast('Agrega al menos un producto con cantidad y precio para guardar','err');return;}
     toast('Guardando remisión primero…','loading',0);
     await registrarRemision();
@@ -4035,7 +4133,7 @@ function _desbloquearFormulario(){
 function _faltanDatos(){
   const nombre=(document.getElementById('c_nombre')?.value||'').trim();
   if(!nombre) return 'Falta el NOMBRE del cliente.';
-  const incompletos=items.filter(i=>(+i.qty>0)&&(!(String(i.desc||'').trim())||!(+i.precio>0)));
+  const incompletos=items.filter(i=>(+i.qty>0)&&(!(String(i.desc||'').trim())||(!i.regalo&&!(+i.precio>0))));
   if(incompletos.length){
     const lista=incompletos.map(i=>'• '+((i.clave||i.desc||'producto sin nombre'))).join('\n');
     return 'Hay productos con cantidad pero sin descripción o sin precio:\n'+lista;
@@ -4070,18 +4168,17 @@ function prepararPago(tipo){
 // ── REGISTRAR — botón principal ───────────────────────────────
 async function registrarTodo(){
   const sn=snap();
-  const activos=sn.items.filter(i=>(+i.qty>0)&&(+i.precio>0));
+  const activos=sn.items.filter(i=>(+i.qty>0)&&((+i.precio>0)||i.regalo));
   if(!activos.length){toast('Agrega al menos un producto con cantidad y precio','err');return;}
 
-  // D) Aviso: productos con cantidad pero SIN precio → NO se cobran (se excluyen del total).
-  // Evita regalar producto por un precio en $0 (catálogo desactualizado o dato faltante).
-  const sinPrecio=sn.items.filter(i=>(+i.qty>0)&&!(+i.precio>0));
-  if(sinPrecio.length){
-    const lista=sinPrecio.map(i=>'• '+((i.clave||i.desc||'(sin nombre)'))+' ×'+(+i.qty)).join('\n');
-    if(!confirm('⚠️ Estos productos tienen CANTIDAD pero SIN PRECIO y NO se cobrarán:\n\n'+lista+'\n\n¿Registrar de todas formas?')) {
-      const _b=document.getElementById('btnRegistrar'); if(_b){_b.disabled=false;_b.innerHTML='✅ REGISTRAR';}
-      return;
-    }
+  // ── VALIDACIÓN: NO registrar si falta algo (nombre del cliente o productos incompletos) ──
+  // Bloquea ANTES de crear el registro → no se generan remisiones a medias.
+  // Un producto con cantidad pero sin precio se considera INCOMPLETO (si es cortesía, márcalo 🎁 Regalo).
+  const _falta=_faltanDatos();
+  if(_falta){
+    toast('⚠️ '+_falta.split('\n')[0],'err',5000);
+    alert('No se puede registrar todavía:\n\n'+_falta+'\n\n(Si un producto es cortesía, márcalo como 🎁 Regalo.)');
+    return;
   }
 
   const btn=document.getElementById('btnRegistrar');
@@ -4103,14 +4200,16 @@ async function registrarTodo(){
     //    El guard `estado!=='pagado'` evita el doble-pago si onCheckPagado ya liquidó.
     const chkPagado=document.getElementById('checkPagado')?.checked;
     const montoInput=Math.round(parseFloat(document.getElementById('montoAbono')?.value||0)*100)/100;
+    const _metAbono=document.getElementById('metodoAbono')?.value||'Efectivo';  // cómo se pagó (separado de Condiciones de pago)
+    const _notAbono=document.getElementById('notasAbono')?.value||'';
     if(remActualId){
       const r=remisiones.find(x=>x.id===remActualId);
       // En modo edición permitir aplicar pago aunque ya estuviera marcada como pagada
       if(r&&(r.estado!=='pagado'||_modoEdicion)){
         if(chkPagado||(_pagoPreparado&&_pagoPreparado.tipo==='completo')){
-          aplicarPago(r, r.saldo, {completo:true});
+          aplicarPago(r, r.saldo, {completo:true, metodo:_metAbono, notas:_notAbono});
         } else if(montoInput>0){
-          aplicarPago(r, montoInput);
+          aplicarPago(r, montoInput, {metodo:_metAbono, notas:_notAbono});
         }
         document.getElementById('montoAbono').value='';
         if(r.estado==='pagado'){
@@ -4207,7 +4306,7 @@ async function confirmarCancelacion(){
   const url=getScriptUrl();
   if(url&&isOnline){
     fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify({tipo:'cancelar_remision',id:r.id,folio:r.folio,motivo,device:DEVICE_ID})
+      body:JSON.stringify({tipo:'cancelar_remision',id:r.id,folio:r.folio,motivo,device:_deviceLabel_()})
     }).then(res=>res.json()).then(d=>{if(d&&d.ok){r.sincronizado=true;persistirRemisiones();}}).catch(()=>{});
   }
   // Regenerar PDF con marca de agua CANCELADO si hay datos locales
@@ -4384,7 +4483,7 @@ function confirmarAnulacion(){
   if(!p){toast('Pago no encontrado','err');return;}
   const fecha=new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
   const uuid=uuidPago();
-  r.pagos.push({uuid,tipo:'anulacion',pago_ref:_anularUUID,monto_ref:p.monto,razon,fecha,device:DEVICE_ID});
+  r.pagos.push({uuid,tipo:'anulacion',pago_ref:_anularUUID,monto_ref:p.monto,razon,fecha,device:_deviceLabel_()});
   // Recalcular saldo desde cero
   const anulados=new Set(r.pagos.filter(x=>x.tipo==='anulacion').map(x=>x.pago_ref));
   const sumPagos=r.pagos
@@ -4488,7 +4587,7 @@ function _resolverRespuestaPago(r,pago,d){
 function _enviarPago(r,pago){
   const url=getScriptUrl();if(!url)return;
   fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},
-    body:JSON.stringify({tipo:'actualizar_remision',id:r.id||'',folio:r.folio,saldo:r.saldo,estado:r.estado,pago,device:DEVICE_ID})
+    body:JSON.stringify({tipo:'actualizar_remision',id:r.id||'',folio:r.folio,saldo:r.saldo,estado:r.estado,pago,device:_deviceLabel_()})
   }).then(res=>res.json()).then(d=>{
     if(_resolverRespuestaPago(r,pago,d) && d.ok && !d.ajustado){
       // Refresco inmediato de la lista compartida (sin esperar el heartbeat de 10s)
@@ -4500,7 +4599,7 @@ function _enviarPago(r,pago){
 function _encolarPago(r,pago){
   const cola=leerSeguro('cola_offline',[]);
   if(!cola.find(p=>p.pago&&p.pago.uuid===pago.uuid)){
-    cola.push({id:r.id||'',folio:r.folio,saldo:r.saldo,estado:r.estado,pago,device:DEVICE_ID,ts:Date.now()});
+    cola.push({id:r.id||'',folio:r.folio,saldo:r.saldo,estado:r.estado,pago,device:_deviceLabel_(),ts:Date.now()});
     guardarSeguro('cola_offline',JSON.stringify(cola));
   }
 }
@@ -4525,7 +4624,8 @@ async function procesarCola(){
         // Reconciliar contra la remisión local correcta (maneja sobrecobro: ajustado / ya_pagada)
         const remLoc=remisiones.find(x=>String(x.id)===String(item.id)||x.folio===item.folio)||null;
         if(_resolverRespuestaPago(remLoc,item.pago,d)) enviados++;
-      }catch(e){}
+        else _bumpTry('cola_offline',e=>e.pago&&e.pago.uuid===item.pago.uuid);
+      }catch(e){ _bumpTry('cola_offline',e=>e.pago&&e.pago.uuid===item.pago.uuid); }
     }
     actualizarBadgePendientes();
     if(enviados>0)toast('Cola sincronizada: '+enviados+' pago(s) enviado(s) ✓','ok');
@@ -4535,13 +4635,95 @@ function actualizarBadgePendientes(){
   const pagos=leerSeguro('cola_offline',[]).length;
   const rems=leerSeguro('cola_remisiones',[]).length;
   const pdfs=leerSeguro('cola_pdf',[]).length;
-  const total=pagos+rems+pdfs;
+  const cots=leerSeguro('cola_cot_r',[]).length;
+  const total=pagos+rems+pdfs+cots;
   const b=document.getElementById('badgePendientes');
   if(b){
-    if(total>0){b.textContent='⏳ '+total+' sin enviar';b.style.display='inline-flex';}
+    if(total>0){b.textContent='⏳ '+total+' sin enviar';b.style.display='inline-flex';b.style.cursor='pointer';b.title='Toca para ver qué falta';b.onclick=verEstado;}
     else{b.style.display='none';}
   }
+  _revisarFallas();
   actualizarPanelConexion();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// VISIBILIDAD DE FALLAS — saber cuándo algo NO se guardó (#1)
+// ─────────────────────────────────────────────────────────────────────────────
+// Cada cola lleva un contador `_try` por item. Si un documento lleva ≥3 intentos
+// sin guardarse, aparece un AVISO ROJO fijo. La pantalla "Estado" lista qué falta.
+function _bumpTry(clave,pred){
+  const cola=leerSeguro(clave,[]); let ch=false;
+  cola.forEach(e=>{ if(pred(e)){ e._try=(e._try||0)+1; ch=true; } });
+  if(ch) guardarSeguro(clave,JSON.stringify(cola));
+}
+function _bumpIntentoPDF(key){ _bumpTry('cola_pdf', e=>String(e.id||e.folio)===String(key)); }
+function _bumpIntentoCot(id){ _bumpTry('cola_cot_r', e=>String(e.id)===String(id)); }
+// Lista de documentos atorados (≥3 intentos) en cualquier cola.
+function _fallasPendientes(){
+  const out=[];
+  const add=(clave,tipo)=>leerSeguro(clave,[]).forEach(e=>{ if((e._try||0)>=3) out.push({tipo,folio:(e.folio||e.id||'—'),intentos:e._try}); });
+  add('cola_remisiones','Remisión sin registrar');
+  add('cola_pdf','PDF sin subir a Drive');
+  add('cola_offline','Pago sin registrar');
+  add('cola_cot_r','Cotización sin guardar');
+  return out;
+}
+// Muestra/oculta el aviso rojo fijo según haya documentos atorados.
+function _revisarFallas(){
+  const fallas=_fallasPendientes();
+  let bar=document.getElementById('alertaFallas');
+  if(!fallas.length){ if(bar)bar.style.display='none'; return; }
+  if(!bar){
+    bar=document.createElement('div'); bar.id='alertaFallas'; bar.className='no-print';
+    bar.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:985;background:#b91c1c;color:#fff;padding:11px 16px;font-size:13px;font-weight:700;text-align:center;cursor:pointer;box-shadow:0 -2px 10px rgba(0,0,0,.3)';
+    bar.onclick=verEstado;
+    document.body.appendChild(bar);
+  }
+  bar.style.display='block';
+  bar.innerHTML='⚠️ '+fallas.length+' documento(s) NO se han podido guardar tras varios intentos — toca para ver y reintentar';
+}
+// Pantalla "Estado": qué está pendiente, qué falló y desde cuándo. Botón reintentar.
+function verEstado(){
+  const ts=localStorage.getItem('cache_cobros_ts');
+  const fr=ts?_frescuraTexto(ts).txt:'aún sin sincronizar';
+  const colas=[
+    {clave:'cola_remisiones',etiqueta:'Remisiones por registrar en el Excel'},
+    {clave:'cola_pdf',etiqueta:'PDFs por subir a Drive'},
+    {clave:'cola_offline',etiqueta:'Pagos por registrar'},
+    {clave:'cola_cot_r',etiqueta:'Cotizaciones por guardar'},
+    {clave:'cola_elim',etiqueta:'Borrados por aplicar'},
+    {clave:'cola_nuevos',etiqueta:'Clientes/productos nuevos por enviar'}
+  ];
+  let html='<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Última sincronización con el servidor: <b>'+fr+'</b><br>Conexión: '+(isOnline?'<span style="color:#1C6E4A">✅ en línea</span>':'<span style="color:#b91c1c">📵 sin conexión</span>')+'</div>';
+  let hayPend=false;
+  colas.forEach(c=>{
+    const arr=leerSeguro(c.clave,[]); if(!arr.length)return; hayPend=true;
+    html+='<div style="margin-bottom:10px"><div style="font-weight:700;font-size:13px;margin-bottom:4px">'+c.etiqueta+' ('+arr.length+')</div>';
+    html+=arr.slice(0,8).map(e=>{
+      const id=e.folio||e.id||e._k||'—';
+      const intentos=(e._try||0);
+      const tag=intentos>=3?' <span style="color:#b91c1c;font-weight:700">⚠️ '+intentos+' intentos</span>':(intentos>0?' <span style="color:#b45309">'+intentos+' intento(s)</span>':'');
+      return '<div style="font-size:12px;padding:3px 0;border-bottom:1px solid var(--border)">• '+esc(String(id))+tag+'</div>';
+    }).join('');
+    if(arr.length>8)html+='<div style="font-size:11px;color:var(--muted)">…y '+(arr.length-8)+' más</div>';
+    html+='</div>';
+  });
+  if(!hayPend) html+='<div style="text-align:center;padding:20px;color:#1C6E4A;font-weight:700">✅ Todo guardado y sincronizado</div>';
+  let ov=document.getElementById('ovEstado');
+  if(!ov){
+    ov=document.createElement('div');ov.id='ovEstado';ov.className='ov';ov.style.zIndex='990';
+    ov.innerHTML='<div class="modal" style="max-width:440px"><div class="modal-hd"><div class="modal-title">🩺 Estado del sistema</div><button class="mx" onclick="closeOv(\'ovEstado\')">✕</button></div><div id="estadoBody" style="padding:4px 2px"></div><button class="btn btn-p" style="width:100%;justify-content:center;padding:12px;margin-top:14px" onclick="_reintentarTodo()">🔄 Reintentar ahora</button></div>';
+    ov.addEventListener('click',e=>{if(e.target===ov)ov.classList.remove('open');});
+    document.body.appendChild(ov);
+  }
+  document.getElementById('estadoBody').innerHTML=html;
+  ov.classList.add('open');
+}
+function _reintentarTodo(){
+  if(!isOnline){toast('Sin conexión — se reintentará solo al volver la señal','warn',4000);return;}
+  toast('🔄 Reintentando envíos…','ok',3000);
+  procesarColaElim();procesarColaRemisiones();procesarCola();procesarColaPDF();_procesarColaCotR();procesarColaNuevos();
+  setTimeout(()=>{actualizarBadgePendientes();verEstado();},2500);
 }
 
 function closeOv(id){
@@ -4933,18 +5115,11 @@ async function _procesarColaCotR(){
       }
       const cli=String(entry.cliente||'CLIENTE').replace(/[^A-Z0-9ÁÉÍÓÚÑ]/gi,'_').toUpperCase();
       const fn='COTIZACION_'+folio+'_'+cli+'.pdf';
-      // Detalle compacto de la cotización: lo que se guarda en la col "Detalle" del Excel.
-      // Permite al ERP analizar qué productos se cotizaron sin abrir el PDF.
-      const _detalleJson=(entry.data&&entry.data.items)?JSON.stringify({
-        descPct:+entry.data.descPct||0,
-        rfc:entry.data.c_rfc||'',
-        items:(entry.data.items||[])
-          .filter(it=>+it.qty>0&&(it.clave||it.desc))
-          .map(it=>({c:it.clave||'',d:it.desc||'',q:+it.qty||0,p:+it.precio||0,v:+it.iva||0}))
-      }):'';
+      // Hora de descarga (momento en que se generó la cotización) → col "Hora descarga" del Excel
+      const _horaCot=new Date(entry.ts||Date.now()).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
       const body={tipo:'cotizacion',token:API_TOKEN,id:entry.id,folio,cliente:entry.cliente,
-        fecha:entry.fecha,total:entry.total,filename:fn,pdf:b64,device:DEVICE_ID,
-        detalle:_detalleJson,
+        fecha:entry.fecha,total:entry.total,filename:fn,pdf:b64,device:_deviceLabel_(),
+        horaDescarga:_horaCot,
         datosCliente:{
           nombre:   entry.data?.c_nombre||entry.cliente,
           tel:      entry.data?.c_tel||'',
@@ -4955,16 +5130,21 @@ async function _procesarColaCotR(){
           email:    entry.data?.c_email||''
         }};
       const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)}).then(x=>x.json());
-      if(res&&res.ok){
+      if(res&&res.ok&&(res.url||res.pdfOk!==false)){
+        // Cotización registrada Y PDF guardado (hay URL, o no se mandó PDF) → desencolar.
         _cotDesencolar(entry.id);
-        // Actualizar historial con folio definitivo y URL del PDF
         if(typeof _cotOnSync==='function') _cotOnSync(entry.id, res.folio, res.url);
         if(res.folio) toast('Cotización guardada: '+res.folio,'ok',3000);
-        // CRÍTICO: refrescar folio para la SIGUIENTE cotización
-        // Sin esto, la próxima cotización usaría el mismo folio → idempotencia falsa
-        _cotCargarFolio();
+        _cotCargarFolio(); // refrescar folio para la SIGUIENTE cotización
+      } else if(res&&res.ok&&res.pdfOk===false){
+        // Fila registrada pero el PDF NO subió → mantener en cola + avisar.
+        _bumpIntentoCot(entry.id);
+        toast('⚠️ '+(entry.folio||'Cotización')+': se registró pero el PDF NO subió. Se reintentará.','warn',7000);
+        _revisarFallas();
+      } else {
+        _bumpIntentoCot(entry.id); _revisarFallas();
       }
-    }catch(e){ console.warn('_procesarColaCotR',e); }
+    }catch(e){ console.warn('_procesarColaCotR',e); _bumpIntentoCot(entry.id); }
   }
   }finally{ _procCotEnCurso=false; }
   _actualizarBadgeCot();
@@ -4986,7 +5166,9 @@ function _activarModoCot(){
   // Mostrar botones de cotizaciones
   document.getElementById('btnVolverRem').style.display='';
   document.getElementById('tbDiv3').style.display='';
-  document.getElementById('btnPDFCot').style.display='';
+  document.getElementById('btnGenerarCot').style.display='';
+  document.getElementById('btnDescargarCot').style.display='';
+  _bloquearDescargaCot(); // el PDF se desbloquea tras Generar
   document.getElementById('btnHistCot').style.display='';
   // Badge de cotizaciones pendientes
   _actualizarBadgeCot();
@@ -5025,7 +5207,8 @@ function _ejecutarVolverRem(){
   // Ocultar botones de cotizaciones
   document.getElementById('btnVolverRem').style.display='none';
   document.getElementById('tbDiv3').style.display='none';
-  document.getElementById('btnPDFCot').style.display='none';
+  document.getElementById('btnGenerarCot').style.display='none';
+  document.getElementById('btnDescargarCot').style.display='none';
   document.getElementById('btnHistCot').style.display='none';
   document.getElementById('badgeCot').style.display='none';
   // Limpiar modo edición de cotización al volver a remisiones
@@ -5045,6 +5228,7 @@ function _cotReset(){
   // Limpiar modo edición y borrador al empezar de cero
   _salirModoEdicionCot();
   localStorage.removeItem('cot_draft_r');
+  if(typeof _bloquearDescargaCot==='function')_bloquearDescargaCot(); // nueva cotización → PDF bloqueado
 }
 
 // ── Folio SUM- ────────────────────────────────────────────────────────────
@@ -5177,10 +5361,13 @@ function renderTableCot(){
         onchange="_cotAct(${it._id},'clave',this.value)"></td>
       <td><input class="ti" type="text" value="${esc(it.desc)}" placeholder="Descripción"
         onchange="_cotAct(${it._id},'desc',this.value)"></td>
-      <td class="r"><div style="display:flex;flex-direction:column;align-items:flex-end">
-        <input class="ti" type="number" inputmode="decimal" value="${it.precio}" placeholder="0.00" min="0" step="0.01" style="text-align:right"
-          onchange="_cotAct(${it._id},'precio',this.value)" oninput="calcTotalsCot()">
-        ${precHint}
+      <td class="r"><div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">
+        ${(+it.costo>0&&p>0)?`<div onclick="_cotInfoMargen(${it._id})" style="cursor:pointer;font-size:9px;font-weight:800;line-height:1;white-space:nowrap;color:${((p-+it.costo)/p*100)<30?'#c0392b':'#1C6E4A'}" title="Margen — toca para detalle">▣${(((p-+it.costo)/p)*100).toFixed(0)}%</div>`:''}
+        <div style="display:flex;flex-direction:column;align-items:flex-end;flex:1;min-width:0">
+          <input class="ti" type="number" inputmode="decimal" value="${it.precio}" placeholder="0.00" min="0" step="0.01" style="text-align:right;width:100%"
+            onchange="_cotAct(${it._id},'precio',this.value)" oninput="calcTotalsCot()">
+          ${precHint}
+        </div>
       </div></td>
       <td class="c"><select class="ti" style="width:60px;text-align:center" onchange="_cotAct(${it._id},'iva',this.value);calcTotalsCot()">${ivaOpts}</select></td>
       <td class="r" style="font-weight:600">${imp>0?'$'+imp.toFixed(2):'—'}</td>
@@ -5315,8 +5502,35 @@ function _cotPpSel(idx){
   const p=pp._fuente[idx];if(!p)return;
   const it=_cotItems.find(i=>i._id===_cotPpRowId);if(!it)return;
   it.clave=p.clave;it.desc=p.desc;it.precio=p.precio;it.iva=_ivaGlobalCot;
+  if(p.costo!=null)it.costo=+p.costo||0; // #9: costo del proveedor → margen
   if(!it.qty||+it.qty===0)it.qty=1;
   pp.classList.remove('open');renderTableCot();calcTotalsCot();
+}
+// #9: detalle de margen del cotizador (modal, igual que remisiones)
+function _cotInfoMargen(rowId){
+  const it=_cotItems.find(i=>i._id===rowId);if(!it)return;
+  const c=+it.costo||0,p=+it.precio||0;
+  if(p<=0){toast('Sin precio configurado','warn');return;}
+  const util=p-c,m=util/p*100,ok=m>=30;
+  let ov=document.getElementById('ovMargen');
+  if(!ov){
+    ov=document.createElement('div');ov.id='ovMargen';ov.className='ov';ov.style.zIndex='970';
+    ov.innerHTML=`<div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;width:calc(100% - 32px);text-align:center">
+      <div id="ovMargenIco" style="font-size:44px;margin-bottom:10px"></div>
+      <div id="ovMargenTit" style="font-size:18px;font-weight:800;margin-bottom:14px"></div>
+      <div id="ovMargenBody" style="font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:18px"></div>
+      <button class="btn btn-p" style="width:100%;justify-content:center;padding:12px" onclick="this.closest('.ov').classList.remove('open')">Cerrar</button>
+    </div>`;
+    ov.addEventListener('click',e=>{if(e.target===ov)ov.classList.remove('open');});
+    document.body.appendChild(ov);
+  }
+  document.getElementById('ovMargenIco').textContent=ok?'✅':'⚠️';
+  document.getElementById('ovMargenTit').innerHTML=(ok?'<span style="color:#1C6E4A">Margen OK</span>':'<span style="color:#c0392b">Margen bajo</span>')+'<br><span style="font-size:13px;font-weight:400;color:var(--muted)">'+(it.clave||it.desc||'producto')+'</span>';
+  document.getElementById('ovMargenBody').innerHTML=
+    'Precio: <b>$'+p.toFixed(2)+'</b><br>Costo proveedor: <b>$'+c.toFixed(2)+'</b><br>Utilidad: <b>$'+util.toFixed(2)+'</b><br>'
+    +'Margen: <b style="font-size:18px;color:'+(ok?'#1C6E4A':'#c0392b')+'">'+m.toFixed(1)+'%</b><br>'
+    +(ok?'<span style="color:#1C6E4A">✓ Mayor o igual al 30%</span>':'<span style="color:#c0392b">⚠️ Menor al 30% — revisa precio o negocia con proveedor</span>');
+  ov.classList.add('open');
 }
 function _cotPpCerrar(){document.getElementById('cot_pp')?.classList.remove('open');}
 
@@ -5333,18 +5547,9 @@ async function _generarCotizacion(){
   }
   if(!window.jspdf){toast('Necesitas conexión para generar el PDF','err');return;}
 
-  const btn=document.getElementById('btnPDFCot');
-  if(btn){btn.disabled=true;btn.textContent='Generando…';}
-  toast(isOnline?'Generando PDF...':'Generando PDF (sin conexión, se subirá luego)...');
-
-  // iOS handling (idéntico a cotizador)
-  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(/Mac/i.test(navigator.userAgent)&&navigator.maxTouchPoints>1);
-  const canShare=isIOS&&!!navigator.share;
-  let iosWin=null;
-  if(isIOS&&!canShare){
-    iosWin=window.open('about:blank','_blank');
-    if(iosWin){iosWin.document.write('<!DOCTYPE html><html><body style="margin:0;background:#0B2D4A;color:#fff;font-family:-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center"><div><div style="font-size:42px">📄</div><div style="font-size:18px;font-weight:600;margin-top:12px">Generando PDF...</div></div></body></html>');iosWin.document.close();}
-  }
+  const btn=document.getElementById('btnGenerarCot');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Generando…';}
+  toast(isOnline?'Generando cotización...':'Generando (sin conexión, se subirá luego)...');
 
   const folioEl=document.getElementById('cot_folioBadge');
   let folio=folioEl?.innerText.trim()||_cotGenFolioLocal();
@@ -5379,7 +5584,7 @@ async function _generarCotizacion(){
 
   try{
     const doc=_construirPDFCot(data);
-    if(!doc){if(iosWin)try{iosWin.close()}catch(_){};toast('Error generando PDF','err');if(btn){btn.disabled=false;btn.textContent='📄 PDF Cotización';}return;}
+    if(!doc){toast('Error generando PDF','err');if(btn){btn.disabled=false;btn.textContent='✅ Generar cotización';}return;}
 
     // ── Calcular total para Drive ──
     const pct=dp/100;let sub=0,ivaT=0;
@@ -5390,52 +5595,90 @@ async function _generarCotizacion(){
     // ── Capturar productos nuevos (F7: los que no están en el catálogo) ──
     _capturarProductosNuevos(data);
 
-    // ── Encolar para Drive ──
+    // ── Encolar para Drive (subir SIN descargar; igual que el botón REGISTRAR de remisiones) ──
     const b64=doc.output('datauristring').split(',')[1];
-    // En modo edición: reusar el id original (idempotente → sobreescribe en Drive)
     const id=_cotModoEdicion||uuidCot();
     const gps=await _obtenerGPS().catch(()=>null);
     const entry={id,folio,cliente:nombre,fecha:fechaTxt,total,filename,pdf:b64,data,
                  lat:gps?.lat||'',lng:gps?.lng||'',ts:Date.now()};
     _cotEncolar(entry);
 
-    // ── Descarga / apertura (idéntica a cotizador) ──
-    if(isIOS){
-      const blob=doc.output('blob');
-      const blobUrl=URL.createObjectURL(blob);
-      const cleanup=()=>{setTimeout(()=>{try{URL.revokeObjectURL(blobUrl)}catch(_){}},120000);};
-      if(canShare){
-        const file=new File([blob],filename,{type:'application/pdf'});
-        const canShareF=navigator.canShare&&navigator.canShare({files:[file]});
-        navigator.share(canShareF?{files:[file],title:filename}:{title:filename})
-          .then(()=>toast('PDF listo para guardar','ok'))
-          .catch(e=>{if(e.name!=='AbortError')mostrarVisorPDF(blob,blobUrl,filename);})
-          .finally(cleanup);
-      } else if(iosWin&&!iosWin.closed){
-        iosWin.location.href=blobUrl;
-        toast('PDF abierto — toca Compartir ↑ para guardar','ok');cleanup();
-      } else {
-        if(iosWin)try{iosWin.close()}catch(_){}
-        mostrarVisorPDF(blob,blobUrl,filename);cleanup();
-      }
-    } else {
-      doc.save(filename);
-      toast('Descargado: '+filename,'ok');
-    }
+    // Guardar los datos para la descarga (que ahora es un paso aparte, a elección del usuario)
+    _cotUltimaData=data; _cotUltimoFilename=filename;
+    _desbloquearDescargaCot();
 
     // ── Subir a Drive ──
-    // Encolar primero, luego procesar. Así si falla o hay desconexión queda en cola.
-    // Si ya estamos online, disparar inmediatamente (no esperar al próximo heartbeat).
-    toast(isOnline ? '☁️ Subiendo cotización…' : '📵 Sin conexión — se subirá al volver la señal','ok',3000);
+    toast(isOnline ? '☁️ Subiendo cotización a Drive…' : '📵 Sin conexión — se subirá al volver la señal','ok',3000);
     if(isOnline) setTimeout(_procesarColaCotR, 300);
+
     // Limpiar borrador y salir de modo edición al generar exitosamente
     localStorage.removeItem('cot_draft_r');
     _salirModoEdicionCot();
+
+    // Recuadro: descargar ahora o después (igual que remisiones)
+    _mostrarConfirmacionCot(folio, total);
   }catch(e){
-    if(iosWin)try{iosWin.close()}catch(_){}
     toast('Error: '+e.message,'err');console.error('_generarCotizacion',e);
   }
-  if(btn){btn.disabled=false;btn.textContent='📄 PDF Cotización';}
+  if(btn){btn.disabled=false;btn.textContent='✅ Generar cotización';}
+}
+
+// ── #10: estado de la descarga de cotización (se desbloquea tras Generar) ──
+let _cotUltimaData=null,_cotUltimoFilename='';
+function _bloquearDescargaCot(){
+  const b=document.getElementById('btnDescargarCot');
+  if(b){b.disabled=true;b.style.opacity='.45';b.style.cursor='not-allowed';b.textContent='🔒 PDF';}
+  _cotUltimaData=null;
+}
+function _desbloquearDescargaCot(){
+  const b=document.getElementById('btnDescargarCot');
+  if(b){b.disabled=false;b.style.opacity='1';b.style.cursor='pointer';b.textContent='⬇️ PDF';}
+}
+// Descarga/comparte el PDF de la última cotización generada (paso aparte de Generar).
+function _descargarCotGenerada(){
+  if(!_cotUltimaData){toast('Primero pulsa "Generar cotización"','warn',3500);return;}
+  if(!window.jspdf){toast('Necesitas conexión para generar el PDF','err');return;}
+  const doc=_construirPDFCot(_cotUltimaData);
+  if(!doc){toast('Error generando PDF','err');return;}
+  const filename=_cotUltimoFilename||'COTIZACION.pdf';
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(/Mac/i.test(navigator.userAgent)&&navigator.maxTouchPoints>1);
+  if(isIOS){
+    const blob=doc.output('blob');
+    const blobUrl=URL.createObjectURL(blob);
+    const cleanup=()=>{setTimeout(()=>{try{URL.revokeObjectURL(blobUrl)}catch(_){}},120000);};
+    if(navigator.share){
+      const file=new File([blob],filename,{type:'application/pdf'});
+      const canShareF=navigator.canShare&&navigator.canShare({files:[file]});
+      navigator.share(canShareF?{files:[file],title:filename}:{title:filename})
+        .then(()=>toast('PDF listo para guardar','ok'))
+        .catch(e=>{if(e.name!=='AbortError')mostrarVisorPDF(blob,blobUrl,filename);})
+        .finally(cleanup);
+    } else {
+      mostrarVisorPDF(blob,blobUrl,filename);cleanup();
+    }
+  } else {
+    doc.save(filename);
+    toast('Descargado: '+filename,'ok');
+  }
+}
+// Recuadro de confirmación tras Generar (gemelo del de remisiones).
+function _mostrarConfirmacionCot(folio, total){
+  let ov=document.getElementById('ovConfirmCotGen');
+  if(!ov){
+    ov=document.createElement('div');ov.id='ovConfirmCotGen';ov.className='ov';ov.style.zIndex='950';
+    ov.innerHTML=`<div style="background:#fff;border-radius:16px;padding:26px 24px;max-width:340px;width:calc(100% - 32px);text-align:center">
+      <div style="font-size:44px;margin-bottom:8px">✅</div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:8px;color:#1C6E4A">Cotización generada</div>
+      <div id="confCotDet" style="font-size:14px;color:var(--muted);margin-bottom:20px;line-height:1.6"></div>
+      <button class="btn btn-p" style="width:100%;justify-content:center;padding:14px;font-size:15px;font-weight:700;border-radius:10px;margin-bottom:8px" onclick="closeOv('ovConfirmCotGen');_descargarCotGenerada()">⬇️ Descargar PDF</button>
+      <button class="btn" style="width:100%;justify-content:center;padding:10px;font-size:14px;background:var(--bg);color:var(--muted)" onclick="closeOv('ovConfirmCotGen')">Ahora no</button>
+    </div>`;
+    ov.addEventListener('click',e=>{if(e.target===ov)ov.classList.remove('open');});
+    document.body.appendChild(ov);
+  }
+  const det=document.getElementById('confCotDet');
+  if(det)det.innerHTML='Cotización <strong>'+folio+'</strong><br>Total: '+fmt(+total||0)+' MXN<br><span style="font-size:12.5px">Se está subiendo a Drive. Puedes descargar el PDF ahora o después con el botón ⬇️ PDF.</span>';
+  ov.classList.add('open');
 }
 
 // ── Constructor del PDF — idéntico a cotizador.html ───────────────────────
